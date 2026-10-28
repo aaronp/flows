@@ -44,7 +44,7 @@ The address bar holds what is showing, so links can be bookmarked and Back works
 | `system` | slug of the system to open |
 | `flow` | slug of the flow to show |
 | `mode` | `system`, `flow` (default), `present` (old `galaxy` links open `system` with its Systems section expanded) |
-| `theme` | `light`, `dark` (default: follow the system setting) |
+| `theme` | `paper`, `night`, `blueprint`, `warm` (default: follow the system light/dark setting; old `light`/`dark` map to `paper`/`night`) |
 
 Older `#open-<system>--<flow>` links still open.
 

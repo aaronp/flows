@@ -23,7 +23,7 @@ github-pages → Deployment branches and tags.
 
 Your site redirects to the viewer with `?src=` pointing at your `flows.md`.
 Any query params you add are passed on, e.g. `?flow=refund&mode=present` or
-`?theme=dark`.
+`?theme=night`.
 
 No Pages? Link straight to the raw file:
 `https://aaronp.github.io/flows/?src=https://raw.githubusercontent.com/<you>/<repo>/<branch>/flows.md`

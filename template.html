@@ -14,20 +14,42 @@
   --font-hand: 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) {
   --bg: #161619; --panel: #222226; --ink: #ececf0; --muted: #a6a6b0; --line: #34343b; --line-strong: #46464f;
   --accent: #8d89f2; --accent-soft: #2d2b50; --accent-ink: #cfcdff; --on-accent: #16161a;
   --canvas: #1b1b1f; --dot: #313137; --disc-line: #6b6f78; --dim: #4b4b54;
   --chain-0: #ececf0; --chain-1: #5aa9f0; --chain-2: #ff9a57; --chain-3: #63d27a; --chain-4: #dd8cf2; --badge-ink: #16161a;
   --ok: #63d27a; --warn-bg: #3a2a18; --warn-ink: #ffc48a; --err-bg: #3a1c1c; --err-ink: #ffb4ab; --code-bg: #2c2c32;
   --disc-k: 0.5; color-scheme: dark; } }
-:root[data-theme="dark"] {
-  --bg: #161619; --panel: #222226; --ink: #ececf0; --muted: #a6a6b0; --line: #34343b; --line-strong: #46464f;
-  --accent: #8d89f2; --accent-soft: #2d2b50; --accent-ink: #cfcdff; --on-accent: #16161a;
-  --canvas: #1b1b1f; --dot: #313137; --disc-line: #6b6f78; --dim: #4b4b54;
-  --chain-0: #ececf0; --chain-1: #5aa9f0; --chain-2: #ff9a57; --chain-3: #63d27a; --chain-4: #dd8cf2; --badge-ink: #16161a;
-  --ok: #63d27a; --warn-bg: #3a2a18; --warn-ink: #ffc48a; --err-bg: #3a1c1c; --err-ink: #ffb4ab; --code-bg: #2c2c32;
+/* The decision ledger's themes (adr src/ui/styles.css), mapped onto these variables. */
+:root[data-theme="paper"] {
+  --bg: #F2F4F3; --panel: #FFFFFF; --ink: #15181C; --muted: #4D555C; --line: #E3E7E5; --line-strong: #C5CBC8;
+  --accent: #1F45B0; --accent-soft: #F1F5FE; --accent-ink: #1F45B0; --on-accent: #FFFFFF;
+  --canvas: #F7F8F7; --dot: #DFE3E1; --disc-line: #8A9197; --dim: #D3D8D6;
+  --chain-0: #15181C; --chain-1: #2E5BDA; --chain-2: #E0662B; --chain-3: #0E8576; --chain-4: #8A4FD0; --badge-ink: #FFFFFF;
+  --ok: #0B6B5F; --warn-bg: #F6ECD2; --warn-ink: #6E5100; --err-bg: #F8E1E3; --err-ink: #A3283C; --code-bg: #ECEFED;
+  --disc-k: 1; color-scheme: light; }
+:root[data-theme="night"] {
+  --bg: #111316; --panel: #1A1D21; --ink: #ECEFED; --muted: #A9B0B6; --line: #2A2E34; --line-strong: #444B53;
+  --accent: #8FB0FF; --accent-soft: #1E2635; --accent-ink: #A9C1FF; --on-accent: #111316;
+  --canvas: #20242A; --dot: #2C3137; --disc-line: #6B737B; --dim: #3A4048;
+  --chain-0: #ECEFED; --chain-1: #7FA2FF; --chain-2: #FF9A5C; --chain-3: #3FC9AE; --chain-4: #B58CF0; --badge-ink: #111316;
+  --ok: #5FD0B8; --warn-bg: #3A3016; --warn-ink: #F1D488; --err-bg: #3A1D22; --err-ink: #FF8A9A; --code-bg: #23272D;
   --disc-k: 0.5; color-scheme: dark; }
+:root[data-theme="blueprint"] {
+  --bg: #0F2747; --panel: #133059; --ink: #F1F6FF; --muted: #B4C8E8; --line: #234775; --line-strong: #4A74B0;
+  --accent: #9CC8FF; --accent-soft: #1C4479; --accent-ink: #CFE2FF; --on-accent: #0F2747;
+  --canvas: #17386A; --dot: #1D4072; --disc-line: #7FA3D6; --dim: #3C66A3;
+  --chain-0: #F1F6FF; --chain-1: #9CC8FF; --chain-2: #FFB347; --chain-3: #7EE0C3; --chain-4: #D3A6FF; --badge-ink: #0F2747;
+  --ok: #7EE0C3; --warn-bg: #4A3D17; --warn-ink: #FFE29A; --err-bg: #4A1F33; --err-ink: #FF9DA8; --code-bg: #0C2240;
+  --disc-k: 0.5; color-scheme: dark; }
+:root[data-theme="warm"] {
+  --bg: #F5F0E6; --panel: #FFFDF8; --ink: #231C14; --muted: #5C5044; --line: #E8DFCF; --line-strong: #C9BBA3;
+  --accent: #8A3B1F; --accent-soft: #F7EBDD; --accent-ink: #7A3A1C; --on-accent: #FFF8EE;
+  --canvas: #F9F4EA; --dot: #E2D8C5; --disc-line: #8F806A; --dim: #D8CCB6;
+  --chain-0: #231C14; --chain-1: #2F5A9E; --chain-2: #C8642B; --chain-3: #2F6B3A; --chain-4: #7A4A9E; --badge-ink: #FFF8EE;
+  --ok: #2F6B3A; --warn-bg: #F2E3C2; --warn-ink: #6A4B0B; --err-bg: #F3DCD6; --err-ink: #9E2A2A; --code-bg: #EDE5D6;
+  --disc-k: 1; color-scheme: light; }
 
 html, body { height: 100%; }
 [hidden] { display: none !important; }
@@ -68,6 +90,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .fold-btn:hover circle, .fold-btn:focus-visible circle { stroke: var(--accent); stroke-width: 2.5; }
 .fold-btn:focus { outline: none; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+.theme-picker { display: flex; align-items: center; gap: 2px; padding: 2px 4px; }
+.theme-picker .lbl { margin-right: 6px; }
+.theme-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; min-width: 36px; padding: 0 8px; border-radius: 7px; border: 0; background: transparent; color: var(--ink); font-weight: 700; white-space: nowrap; cursor: pointer; }
+.theme-btn:hover, .theme-btn:focus-visible { background: var(--code-bg); outline: none; }
+.theme-btn.on { background: var(--accent-soft); color: var(--accent-ink); }
+.theme-swatch { position: relative; flex: none; width: 20px; height: 20px; border-radius: 50%; overflow: hidden; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.theme-btn.on .theme-swatch { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.theme-swatch > span { position: absolute; right: 0; top: 0; width: 10px; height: 20px; }
+.theme-swatch > i { position: absolute; left: 4px; bottom: 4px; width: 5px; height: 5px; border-radius: 50%; }
 .menu [role="menuitem"].danger { color: var(--err-ink); }
 .dialog.narrow { width: min(560px, 100%); }
 .dialog.narrow .dialog-main { flex: 0 1 auto; }

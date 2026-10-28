@@ -75,7 +75,7 @@ const ui = {
   schema: null,   // open schema editor: { orig, draft, readOnly, system, error, confirmDel }
   mdOpen: false, mdText: '', mdError: null, isSample: false,
   store: { state: 'loading', msg: 'Loading…' }, savePaused: false,
-  theme: null      // 'light' | 'dark' | null (follow the system setting)
+  theme: null      // a THEMES id, or null (follow the system setting)
 };
 const hist = { past: [], future: [], key: null, at: 0 };
 
@@ -187,7 +187,15 @@ function attempt(fn) {
  * (the artifact viewer only passes a #fragment to the page). */
 const MODES = ['system', 'flow', 'play']; // in header order: ⌘1–⌘3
 const MODE_NAMES = { system: 'Systems', flow: 'Flows', play: 'Present' };
-const THEMES = ['light', 'dark'];
+/** Themes from the decision ledger (adr); ids map to [data-theme] blocks in template.html. No theme follows the system light/dark setting. */
+const THEMES = [
+  { id: null, label: 'Auto', swatch: { bg: '#f3f3f6', primary: '#161619', accent: '#5b57d1' } },
+  { id: 'paper', label: 'Graph paper', swatch: { bg: '#f2f4f3', primary: '#15181c', accent: '#e0662b' } },
+  { id: 'night', label: 'Night shift', swatch: { bg: '#111316', primary: '#ecefed', accent: '#ff8a4c' } },
+  { id: 'blueprint', label: 'Blueprint', swatch: { bg: '#0f2747', primary: '#ffffff', accent: '#ffb347' } },
+  { id: 'warm', label: 'Warm ledger', swatch: { bg: '#f5f0e6', primary: '#7a2e1c', accent: '#c8642b' } }
+];
+const OLD_THEMES = { light: 'paper', dark: 'night' }; // ?theme= values from before the adr themes
 function parseRoute(search, hash) {
   const q = new URLSearchParams(search);
   const old = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
@@ -691,13 +699,15 @@ function renderHeader() {
   const cls = st.state === 'saved' ? 'ok' : st.state === 'error' || st.state === 'paused' || st.state === 'none' ? 'bad' : '';
   const entries = [...library.entries()].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
   $('top').innerHTML =
-    '<div class="brand"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="9" fill="#dbe4ff" stroke="#1e1e1e" stroke-width="1.6"/><circle cx="14" cy="5" r="3.2" fill="#ffec99" stroke="#1e1e1e" stroke-width="1.4"/><circle cx="22" cy="18" r="3.2" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="1.4"/><circle cx="6" cy="18" r="3.2" fill="#d0bfff" stroke="#1e1e1e" stroke-width="1.4"/></svg>Flows</div>'
-    + '<div class="row">'
-    + '<div class="menuwrap" id="file-menu-wrap"><button type="button" class="btn icon" id="file-menu-btn" data-act="file-menu" aria-label="File" title="File" aria-haspopup="menu" aria-expanded="' + ui.fileMenu + '" aria-controls="file-menu">' + icon('menu') + '</button>'
+    '<div class="menuwrap" id="file-menu-wrap"><button type="button" class="btn icon" id="file-menu-btn" data-act="file-menu" aria-label="File" title="File" aria-haspopup="menu" aria-expanded="' + ui.fileMenu + '" aria-controls="file-menu">' + icon('menu') + '</button>'
     + (ui.fileMenu ? '<div class="menu" id="file-menu" role="menu" aria-labelledby="file-menu-btn">'
       + [['new-sys', 'plus', 'New system'], ['open', 'up', 'Open…'], ['download', 'down', 'Download Markdown'], ['sys-del', 'trash', 'Delete system…']].map(([a, ic, n]) => (a === 'sys-del' ? '<hr role="separator">' : '') + '<button type="button" role="menuitem" tabindex="-1" data-act="' + a + '"' + (a === 'sys-del' ? ' class="danger"' : '') + '>' + icon(ic) + n + '</button>').join('')
-      + '</div>' : '')
+      + '<hr role="separator"><div class="theme-picker" role="group" aria-label="Theme"><span class="lbl">Theme</span>'
+      + THEMES.map((x) => { const on = x.id === ui.theme; return '<button type="button" role="menuitemradio" tabindex="-1" class="theme-btn' + (on ? ' on' : '') + '" aria-checked="' + on + '" data-act="theme" data-v="' + (x.id || '') + '" title="' + x.label + '" aria-label="' + x.label + ' theme"><span class="theme-swatch" aria-hidden="true" style="background:' + x.swatch.bg + '"><span style="background:' + x.swatch.primary + '"></span><i style="background:' + x.swatch.accent + '"></i></span>' + (on ? x.label : '') + '</button>'; }).join('')
+      + '</div></div>' : '')
     + '</div>'
+    + '<div class="brand"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="9" fill="#dbe4ff" stroke="#1e1e1e" stroke-width="1.6"/><circle cx="14" cy="5" r="3.2" fill="#ffec99" stroke="#1e1e1e" stroke-width="1.4"/><circle cx="22" cy="18" r="3.2" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="1.4"/><circle cx="6" cy="18" r="3.2" fill="#d0bfff" stroke="#1e1e1e" stroke-width="1.4"/></svg>Flows</div>'
+    + '<div class="row">'
     + '<label for="sys-pick" class="lbl" style="position:absolute;left:-9999px">System</label><select class="field" id="sys-pick" style="width:auto;min-height:36px;font-weight:800">'
     + entries.map(([id, e]) => '<option value="' + esc(id) + '"' + (id === ui.homeDoc ? ' selected' : '') + '>' + esc(e.model ? e.model.system.label : id) + (e.model ? '' : ' (has errors)') + '</option>').join('')
     + '</select>' + (ui.isSample ? '<span class="chip">Sample</span>' : '') + '</div>'
@@ -708,7 +718,6 @@ function renderHeader() {
     + '<div class="row">'
     + '<button type="button" class="btn icon" data-act="undo" aria-label="Undo" ' + (hist.past.length ? '' : 'disabled') + '>' + icon('undo') + '</button>'
     + '<button type="button" class="btn icon" data-act="redo" aria-label="Redo" ' + (hist.future.length ? '' : 'disabled') + '>' + icon('redo') + '</button>'
-    + '<button type="button" class="btn" data-act="theme" title="Theme (light, dark or follow the system)">' + (ui.theme ? ui.theme[0].toUpperCase() + ui.theme.slice(1) : 'Auto') + '</button>'
     + '<button type="button" class="btn" data-act="md" aria-pressed="' + ui.mdOpen + '">' + icon('file') + 'Markdown</button>'
     + '</div>';
   const b = $('banner');
@@ -1551,7 +1560,7 @@ function applyFormat(kind) {
 document.addEventListener('click', (e) => {
   const inMenu = e.target.closest('#file-menu-wrap');
   const t = e.target.closest('[data-act]');
-  if (ui.fileMenu && (!inMenu || (t && t.getAttribute('data-act') !== 'file-menu'))) { ui.fileMenu = false; renderHeader(); }
+  if (ui.fileMenu && (!inMenu || (t && t.getAttribute('data-act') !== 'file-menu' && t.getAttribute('data-act') !== 'theme'))) { ui.fileMenu = false; renderHeader(); }
   // System/flow links open in place (no reload, so unsaved work stays); modified clicks still open a new tab.
   const link = e.target.closest('a.ring-link, a.sublink');
   if (link && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) { e.preventDefault(); applyRoute(parseRoute(new URL(link.getAttribute('href'), location.href).search, '')); return; }
@@ -1564,7 +1573,7 @@ document.addEventListener('click', (e) => {
     undo, redo,
     md: () => { ui.mdOpen = !ui.mdOpen; if (ui.mdOpen && !ui.mdError) ui.mdText = C.serialize(model); render({ skip: ['left', 'right', 'stage', 'playbar'] }); },
     'file-menu': () => setFileMenu(!ui.fileMenu, true),
-    theme: () => { ui.theme = ui.theme === null ? 'light' : ui.theme === 'light' ? 'dark' : null; applyTheme(); renderHeader(); syncUrl(); },
+    theme: () => { ui.theme = v || null; applyTheme(); renderHeader(); syncUrl(); $('file-menu').querySelector('[aria-checked="true"]').focus(); },
     download: () => downloadMd(),
     open: () => { ui.openDlg = { url: '', busy: false, error: null, dragging: false, opener: t.isConnected ? t : $('file-menu-btn') }; renderModal(); $('od-file').focus(); },
     'od-close': () => closeOpenDlg(),
@@ -1875,7 +1884,7 @@ document.addEventListener('focusout', (e) => {
 function setFileMenu(open, focusIn) {
   ui.fileMenu = open;
   renderHeader();
-  if (open && focusIn) $('file-menu').querySelector('[role="menuitem"]').focus();
+  if (open && focusIn) $('file-menu').querySelector('[role^="menuitem"]').focus();
   if (!open) $('file-menu-btn').focus();
 }
 document.addEventListener('keydown', (e) => {
@@ -1890,7 +1899,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (ui.fileMenu && t && t.closest && t.closest('#file-menu-wrap')) {
-    const items = [...$('file-menu').querySelectorAll('[role="menuitem"]')];
+    const items = [...$('file-menu').querySelectorAll('[role^="menuitem"]')];
     const i = items.indexOf(t);
     if (e.key === 'Escape' || e.key === 'Tab') { if (e.key === 'Escape') e.preventDefault(); setFileMenu(false, false); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus(); return; }
@@ -2341,7 +2350,7 @@ async function initStore() {
 
 /* ---------- boot ---------- */
 const theme = new URLSearchParams(location.search).get('theme');
-ui.theme = THEMES.includes(theme) ? theme : null;
+ui.theme = THEMES.some((x) => x.id && x.id === (OLD_THEMES[theme] || theme)) ? OLD_THEMES[theme] || theme : null;
 applyTheme();
 seedSamples();
 render();
