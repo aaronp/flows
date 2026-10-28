@@ -121,16 +121,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .item .t { font-weight: 700; font-size: 14px; }
 .item .s { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .item .body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
-.nb { flex: none; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--badge-ink); }
+.nb { flex: none; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--badge-ink); background: var(--nb); }
+.nb.async { background: transparent; color: var(--nb); border: 2px dashed var(--nb); }
+.seg .kn { font: 700 10px/1 var(--font-mono); opacity: .6; margin-right: 6px; }
 .nb.todo { background: transparent !important; color: var(--muted); border: 1.5px solid var(--dim); }
 .steprow { position: relative; display: flex; align-items: stretch; border-radius: 9px; }
 .steprow .grip { flex: none; width: 14px; display: grid; place-items: center; color: var(--muted); cursor: grab; opacity: .35; font-size: 12px; letter-spacing: -2px; user-select: none; }
 .steprow:hover .grip, .steprow:focus-within .grip { opacity: 1; }
 .steprow .item { flex: 1 1 auto; min-width: 0; }
 .steprow.dragging { opacity: .4; }
-.steprow .asyncbtn { flex: none; align-self: center; margin-left: 4px; font: 700 10px/1 ui-monospace, monospace; padding: 5px 6px; border-radius: 6px; border: 1.5px solid var(--line-strong); background: transparent; color: var(--muted); cursor: pointer; min-width: 44px; }
-.steprow .asyncbtn[aria-pressed="true"] { border-style: dashed; color: var(--accent-ink); border-color: var(--accent); }
-.steprow .asyncbtn:hover { color: var(--ink); }
 .seq .act { fill: var(--panel); stroke: none; }
 .seq .act.async { fill: var(--code-bg); }
 .seq .act-line { fill: none; stroke-width: 1.6; pointer-events: none; }
@@ -1715,12 +1714,13 @@ function attempt(fn) {
 /* ---------- address: ?system=<slug>&flow=<slug>&mode=<mode>&theme=light|dark ----------
  * Other params (such as ?src=) are left as they are. Older #open-<system>--<flow> links still open
  * (the artifact viewer only passes a #fragment to the page). */
-const MODES = ['system', 'flow', 'galaxy', 'play'];
+const MODES = ['system', 'flow', 'galaxy', 'play']; // in header order: ⌘1–⌘4
+const MODE_NAMES = { system: 'Systems', flow: 'Flows', galaxy: 'Galaxy', play: 'Present' };
 const THEMES = ['light', 'dark'];
 function parseRoute(search, hash) {
   const q = new URLSearchParams(search);
   const old = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
-  const mode = q.get('mode');
+  const mode = q.get('mode') === 'present' ? 'play' : q.get('mode');
   return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null };
 }
 let routeReady = false, routeKey = null;
@@ -1751,7 +1751,7 @@ function currentRoute() {
   const q = new URLSearchParams(location.search);
   q.set('system', homeSlug());
   if (ui.mode === 'flow' || ui.mode === 'play') q.set('flow', ui.flow); else q.delete('flow');
-  if (ui.mode !== 'flow') q.set('mode', ui.mode); else q.delete('mode');
+  if (ui.mode !== 'flow') q.set('mode', ui.mode === 'play' ? 'present' : ui.mode); else q.delete('mode');
   if (ui.theme) q.set('theme', ui.theme); else q.delete('theme');
   return '?' + q.toString().replace(/%2F/gi, '/').replace(/%3A/gi, ':');
 }
@@ -2220,7 +2220,7 @@ function renderHeader() {
     + entries.map(([id, e]) => '<option value="' + esc(id) + '"' + (id === ui.homeDoc ? ' selected' : '') + '>' + esc(e.model ? e.model.system.label : id) + (e.model ? '' : ' (has errors)') + '</option>').join('')
     + '</select>' + (ui.isSample ? '<span class="chip">Sample</span>' : '') + '</div>'
     + '<div class="seg" role="group" aria-label="Mode">'
-    + ['system', 'flow', 'galaxy', 'play'].map((m) => '<button type="button" data-act="mode" data-v="' + m + '" aria-pressed="' + (ui.mode === m) + '">' + m[0].toUpperCase() + m.slice(1) + '</button>').join('')
+    + MODES.map((m, i) => '<button type="button" data-act="mode" data-v="' + m + '" aria-pressed="' + (ui.mode === m) + '" aria-keyshortcuts="Meta+' + (i + 1) + ' Control+' + (i + 1) + '" title="' + (/Mac/.test(navigator.platform) ? '⌘' : 'Ctrl+') + (i + 1) + '"><span class="kn">' + (i + 1) + '</span>' + MODE_NAMES[m] + '</button>').join('')
     + '</div><div class="spacer"></div>'
     + '<span class="status ' + cls + '" title="' + esc(st.msg) + '"><span class="dot"></span>' + esc(st.msg) + '</span>'
     + '<div class="row">'
@@ -2268,7 +2268,7 @@ function renderLeft() {
     + model.flows.map((g) => '<li><button type="button" class="item" data-act="pick-flow" data-v="' + esc(g.slug) + '" aria-current="' + (g.slug === ui.flow) + '"><span class="body"><span class="t">' + esc(g.name) + '</span><span class="s">' + esc(g.slug) + '</span><span class="hint">' + (startsAt(g) ? 'starts at ' + esc(startsAt(g)) + ' · ' : '') + plural(g.steps.length, 'step') + '</span></span></button></li>').join('') + '</ul></section>';
   if (ui.mode === 'play') {
     const views = [['orbit', 'Orbit'], ['sequence', 'Sequence'], ['slides', 'Slides']];
-    el.innerHTML = flowsHtml + '<section class="sec"><h2 class="lbl">View</h2><div class="seg" role="group" aria-label="Play view">'
+    el.innerHTML = flowsHtml + '<section class="sec"><h2 class="lbl">View</h2><div class="seg" role="group" aria-label="Present view">'
       + views.map(([v, n]) => '<button type="button" data-act="view" data-v="' + v + '" aria-pressed="' + (ui.playView === v) + '">' + n + '</button>').join('') + '</div>'
       + (model.system.includes.length ? '<label class="row" style="font-weight:700;font-size:13px"><input type="checkbox" id="play-collapse"' + (ui.collapse ? ' checked' : '') + ' style="accent-color:var(--accent)"> Collapse included systems</label><p class="hint">Collapsed, a step that triggers a sub-flow plays as one step.</p>' : '') + '</section>'
       + '<section class="sec"><h2 class="lbl">Steps</h2>' + playList() + '</section>' + problemsHtml();
@@ -2295,6 +2295,13 @@ function galaxyLeft() {
     + (examples.length ? '<button type="button" class="btn" data-act="add-examples">Add example systems (' + esc(examples.map((m) => m.system.label).join(', ')) + ')</button>' : '')
     + '</section>';
 }
+/** Step numbers in the order the step list shows them: chain by chain, each in play order. */
+function stepOrder(f) {
+  const chains = [...new Set(f.steps.map((s) => s.chain))];
+  return chains.flatMap((c) => {
+    try { return C.chainSequence(f, c).map((s) => s.n); } catch (e) { if (!(e instanceof C.UserError)) throw e; return f.steps.filter((s) => s.chain === c).map((s) => s.n); }
+  });
+}
 function stepList(f) {
   if (!f.steps.length) return '<p class="hint">No steps yet. Click a participant on the ring to start.</p>';
   const chains = [];
@@ -2307,10 +2314,10 @@ function stepList(f) {
       + steps.map((s) => {
         const cur = ui.sel && ui.sel.type === 'step' && ui.sel.n === s.n;
         return '<li class="steprow" draggable="true" data-drag-n="' + s.n + '" data-chain="' + c + '"><span class="grip" aria-hidden="true">⋮⋮</span><button type="button" class="item" data-act="pick-step" data-v="' + s.n + '" aria-current="' + cur + '" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown">'
-          + '<span class="nb" style="background:' + (cur ? 'var(--accent)' : chainColor(s.chain)) + '">' + s.n + '</span><span class="body"><span class="t">' + esc(s.label || '(no label)') + '</span>'
+          + '<span class="nb' + (s.async ? ' async' : '') + '" style="--nb:' + (cur ? 'var(--accent)' : chainColor(s.chain)) + '"' + (s.async ? ' title="Async"' : '') + '>' + s.n + '</span><span class="body"><span class="t">' + esc(s.label || '(no label)') + '</span>'
           + '<span class="s">' + esc(s.from) + ' → ' + esc(s.to) + (s.from === s.to ? ' (self)' : '') + '</span>'
           + '<span class="row" style="gap:4px">' + (s.message ? '<span class="chip type" title="' + esc(s.message) + '">' + esc(tt(s.message)) + '</span>' : '') + s.tags.map((t) => '<span class="chip">#' + esc(t) + '</span>').join('') + (s.triggers ? '<span class="chip trig">triggers ' + esc(s.triggers) + '</span>' : '') + (s.result ? '<span class="chip ret" title="' + esc(s.result) + '">returns ' + esc(tt(s.result)) + '</span>' : '') + '</span>'
-          + '</span></button><button type="button" class="asyncbtn" data-act="row-async" data-v="' + s.n + '" aria-pressed="' + s.async + '" title="Step ' + s.n + ' is ' + (s.async ? 'async: click for sync' : 'sync: click for async') + '">' + (s.async ? 'async' : 'sync') + '</button></li>';
+          + '</span></button></li>';
       }).join('') + '</ul>';
   }).join('');
 }
@@ -3157,7 +3164,6 @@ document.addEventListener('click', (e) => {
     'flow-view': () => { ui.flowView = v; ui.cursor = null; renderStage(); },
     'step-nav': () => { const s = C.findStep(f, Number(v)); ui.sel = { type: 'step', n: s.n }; ui.chain = s.chain; ui.pending = null; ui.confirm = null; ui.drafts.data = null; render(); },
     'step-async': () => commit(C.updateStep(model, f.slug, sel.n, { async: v === 'async' })),
-    'row-async': () => { const n = Number(v); commit(C.updateStep(model, f.slug, n, { async: !C.findStep(f, n).async })); },
     'tag-del': () => commit(C.updateStep(model, f.slug, sel.n, { tags: C.findStep(f, sel.n).tags.filter((x) => x !== v) })),
     fmt: () => applyFormat(v),
     'desc-mode': () => { ui.descPreview = v === 'preview'; renderRight(); },
@@ -3449,6 +3455,22 @@ document.addEventListener('keydown', (e) => {
   if (ui.schema && e.key === 'Escape') { e.preventDefault(); closeSchema(); return; }
   // Enter or Esc in a step label finishes typing; a second Esc then cancels the pending step.
   if (t && t.id === 'st-label' && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); t.blur(); return; }
+  // ⌘/Ctrl+1–4: switch view. ⌘/Ctrl+←/→ in Flows: previous/next step, ready to retitle.
+  const cmd = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
+  if (cmd && /^[1-4]$/.test(e.key)) { e.preventDefault(); setMode(MODES[Number(e.key) - 1]); return; }
+  if (cmd && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && ui.mode === 'flow' && (!typing || t.id === 'st-label')) {
+    e.preventDefault();
+    const f = flow(), order = stepOrder(f);
+    if (!order.length) return;
+    const i = ui.sel && ui.sel.type === 'step' ? order.indexOf(ui.sel.n) : -1;
+    const n = order[i < 0 ? (e.key === 'ArrowRight' ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + (e.key === 'ArrowRight' ? 1 : -1)))];
+    const s = C.findStep(f, n);
+    ui.sel = { type: 'step', n }; ui.chain = s.chain; ui.pending = null; ui.confirm = null;
+    render();
+    const title = document.getElementById('st-label');
+    if (title) { title.focus(); title.select(); }
+    return;
+  }
   if (typing) return;
   // Alt+↑ / Alt+↓ on a step in the list moves it within its chain
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && t && t.matches && t.matches('#left [data-act="pick-step"]')) {

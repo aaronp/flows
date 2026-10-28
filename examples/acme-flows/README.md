@@ -22,7 +22,7 @@ deploy to github-pages"? Add your branch under Settings → Environments →
 github-pages → Deployment branches and tags.
 
 Your site redirects to the viewer with `?src=` pointing at your `flows.md`.
-Any query params you add are passed on, e.g. `?flow=refund&mode=play` or
+Any query params you add are passed on, e.g. `?flow=refund&mode=present` or
 `?theme=dark`.
 
 No Pages? Link straight to the raw file:
