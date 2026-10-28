@@ -4,8 +4,9 @@
 const C = FlowsCore;
 const SIZE = 640;          // home ring, world units
 const INC_SIZE = 480;      // included rings
-const FOLD_SIZE = 320;     // included rings folded to a title over their entry participants (Flow mode), at least
-const FOLD_SPACING = 130;  // between a folded ring's participants, room for their labels
+const FOLD_SIZE = 320;     // scale of a folded system (Flow mode): no disc, just its title over a row of its entry participants
+const FOLD_SPACING = 130;  // between a folded system's participants, room for their labels
+const FOLD_GAP = 160;      // from the home ring's edge to a folded system's centre
 const SLOT_SECONDS = 1.6;
 const CHAINS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const chainColor = (c) => {
@@ -29,7 +30,7 @@ const ICONS = {
   play: 'M5 3.5v13l11-6.5z', pause: 'M6 4h3v12H6zM11 4h3v12h-3z', prev: 'M5 4v12M16 4 8 10l8 6z', next: 'M15 4v12M4 4l8 6-8 6z',
   fork: 'M6 3v14M6 11a4 4 0 0 0 4 4h6M13 12l3 3-3 3', link: 'M8.5 11.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.5 3.5 0 0 0-5-5l-1 1M11.5 8.5a3.5 3.5 0 0 0-5 0L4 11a3.5 3.5 0 0 0 5 5l1-1',
   trash: 'M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11M9 9v5M11 9v5',
-  list: 'M8 5h9M8 10h9M8 15h9M4 5h.01M4 10h.01M4 15h.01', file: 'M5 2.5h7l3.5 3.5v11.5H5zM12 2.5V6h3.5', down: 'M10 3v10M6 9l4 4 4-4M4 17h12', up: 'M10 13V3M6 7l4-4 4 4M4 17h12',
+  list: 'M8 5h9M8 10h9M8 15h9M4 5h.01M4 10h.01M4 15h.01', menu: 'M3.5 5.5h13M3.5 10h13M3.5 14.5h13', file: 'M5 2.5h7l3.5 3.5v11.5H5zM12 2.5V6h3.5', down: 'M10 3v10M6 9l4 4 4-4M4 17h12', up: 'M10 13V3M6 7l4-4 4 4M4 17h12',
   fit: 'M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4', chevL: 'M12.5 4.5 7 10l5.5 5.5', chevR: 'M7.5 4.5 13 10l-5.5 5.5', plus: 'M10 4v12M4 10h12', minus: 'M4 10h12'
 };
 C.KIND_NAMES.forEach((k) => { if (!ICONS[k]) throw new Error('bug: no palette icon for kind "' + k + '"'); });
@@ -372,8 +373,7 @@ function buildScene(withIncludes, collapse, fold) {
       const a = -Math.PI / 2 + (i * 2 * Math.PI) / k;
       const m = lib.get(slug) || null;
       const folded = Boolean(m) && !collapse && fold.has(slug);
-      // A folded ring widens to fit its row of entry points.
-      const size = folded ? Math.max(FOLD_SIZE, (foldedParticipants(slug, m).length - 1) * FOLD_SPACING / 0.55) : INC_SIZE, G = SIZE / 2 + size / 2 + 90;
+      const size = folded ? FOLD_SIZE : INC_SIZE, G = folded ? SIZE / 2 + FOLD_GAP : SIZE / 2 + size / 2 + 90;
       const drag = ui.ringDrag && ui.ringDrag.slug === slug;
       rings.push({ slug, model: m, cx: drag ? ui.ringDrag.x : G * Math.cos(a), cy: drag ? ui.ringDrag.y : G * Math.sin(a), slotX: G * Math.cos(a), slotY: G * Math.sin(a), size, home: false, collapsed: collapse || !m, missing: !m, folded });
     });
@@ -393,12 +393,16 @@ function buildScene(withIncludes, collapse, fold) {
   });
   return { rings, nodes };
 }
+/** Half the width of a folded system's rule: past its row's ends, and at least its title's width. */
+const foldRuleW = (r) => Math.max(70, (r.shown - 1) * FOLD_SPACING / 2 + 55);
 function sceneBounds(scene) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   scene.rings.forEach((r) => {
     const cx = r.slotX !== undefined ? r.slotX : r.cx, cy = r.slotY !== undefined ? r.slotY : r.cy;
-    x0 = Math.min(x0, cx - r.size / 2 - 130); x1 = Math.max(x1, cx + r.size / 2 + 130);
-    y0 = Math.min(y0, cy - r.size / 2 - 24); y1 = Math.max(y1, cy + r.size / 2 + 24);
+    // A folded system: title above its centre, its row and their labels below.
+    const hw = r.folded ? foldRuleW(r) : r.size / 2, top = r.folded ? 30 : r.size / 2, bottom = r.folded ? 90 : r.size / 2;
+    x0 = Math.min(x0, cx - hw - 130); x1 = Math.max(x1, cx + hw + 130);
+    y0 = Math.min(y0, cy - top - 24); y1 = Math.max(y1, cy + bottom + 24);
   });
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
@@ -453,19 +457,19 @@ function sceneSvg(scene, opts) {
     const R = r.L.R;
     const sys = r.model ? r.model.system : null;
     const fill = sys ? sys.fill : '#e9ecef', op = sys ? sys.opacity : 0.4;
-    o.push('<circle cx="' + f1(r.cx) + '" cy="' + f1(r.cy) + '" r="' + f1(R) + '" style="fill:' + fill + ';fill-opacity:calc(var(--disc-k) * ' + op + ')"/>');
-    o.push('<path class="disc-line' + (r.collapsed ? ' collapsed' : '') + (opts.selectedRing && opts.selectedRing(r.slug) ? ' ring-sel' : '') + '" d="' + rEllipse(r.cx, r.cy, R, R, rng(hash('disc' + r.slug))) + '"/>');
+    if (!r.folded) o.push('<circle cx="' + f1(r.cx) + '" cy="' + f1(r.cy) + '" r="' + f1(R) + '" style="fill:' + fill + ';fill-opacity:calc(var(--disc-k) * ' + op + ')"/>');
+    if (!r.folded) o.push('<path class="disc-line' + (r.collapsed ? ' collapsed' : '') + (opts.selectedRing && opts.selectedRing(r.slug) ? ' ring-sel' : '') + '" d="' + rEllipse(r.cx, r.cy, R, R, rng(hash('disc' + r.slug))) + '"/>');
     if (opts.ringHits && !r.home) o.push('<circle class="ring-hit" data-ring="' + esc(r.slug) + '" cx="' + f1(r.cx) + '" cy="' + f1(r.cy) + '" r="' + f1(R + r.L.nr) + '"/>');
     const big = r.collapsed ? 1.6 : 1;
     const centre = '<text class="centre" style="font-size:' + f1(32 * k * big) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy - 4 * k) + '" text-anchor="middle">' + esc(sys ? sys.label : r.slug) + '</text>';
     o.push(!r.home && sys ? '<a class="ring-link" href="' + routeHref(r.slug, null) + '" aria-label="Open ' + esc(sys.label) + '">' + centre + '</a>' : centre);
     // Folded: a rule under the title, its entry points in a row below.
-    if (r.folded) { const w = R * 0.9; o.push('<path class="disc-line" d="' + rLine(r.cx - w, r.cy + 10 * k, r.cx + w, r.cy + 10 * k, rng(hash('rule' + r.slug))) + '"/>'); }
+    if (r.folded) { const w = foldRuleW(r); o.push('<path class="disc-line" d="' + rLine(r.cx - w, r.cy + 10 * k, r.cx + w, r.cy + 10 * k, rng(hash('rule' + r.slug))) + '"/>'); }
     const sub = r.missing ? 'not in your saved systems' : r.collapsed ? plural(sys.participants.length, 'participant') + ' · collapsed' : r.folded ? '' : opts.sublabel ? opts.sublabel(r) : '';
     o.push('<text class="centre-sub" style="font-size:' + f1(Math.max(11, 12 * k * big)) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy + 20 * k * big) + '" text-anchor="middle">' + esc(sub) + '</text>');
     if (opts.foldToggles && !r.home && sys) {
-      // Expand / collapse this system: a small button on the ring's rim, top right.
-      const bx = r.cx + R * Math.SQRT1_2 + 10, by = r.cy - R * Math.SQRT1_2 - 10;
+      // Expand / collapse this system: a small button on the ring's rim, top right (folded: at the end of its rule).
+      const bx = r.folded ? r.cx + foldRuleW(r) + 26 : r.cx + R * Math.SQRT1_2 + 10, by = r.folded ? r.cy + 10 * k : r.cy - R * Math.SQRT1_2 - 10;
       o.push('<g class="fold-btn" data-act="fold" data-v="' + esc(r.slug) + '" role="button" tabindex="0" aria-pressed="' + !r.folded + '" aria-label="' + (r.folded ? 'Expand ' : 'Collapse ') + esc(sys.label) + '"><title>' + (r.folded ? 'Show all ' + plural(sys.participants.length, 'participant') + ' of ' : 'Show only where flows start in ') + esc(sys.label) + '</title>'
         + '<circle cx="' + f1(bx) + '" cy="' + f1(by) + '" r="20"/><path d="M' + f1(bx - 8) + ' ' + f1(by) + 'h16' + (r.folded ? 'M' + f1(bx) + ' ' + f1(by - 8) + 'v16' : '') + '"/></g>');
     }
@@ -685,7 +689,13 @@ function renderHeader() {
   const entries = [...library.entries()].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
   $('top').innerHTML =
     '<div class="brand"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="9" fill="#dbe4ff" stroke="#1e1e1e" stroke-width="1.6"/><circle cx="14" cy="5" r="3.2" fill="#ffec99" stroke="#1e1e1e" stroke-width="1.4"/><circle cx="22" cy="18" r="3.2" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="1.4"/><circle cx="6" cy="18" r="3.2" fill="#d0bfff" stroke="#1e1e1e" stroke-width="1.4"/></svg>Flows</div>'
-    + '<div class="row"><label for="sys-pick" class="lbl" style="position:absolute;left:-9999px">System</label><select class="field" id="sys-pick" style="width:auto;min-height:36px;font-weight:800">'
+    + '<div class="row">'
+    + '<div class="menuwrap" id="file-menu-wrap"><button type="button" class="btn icon" id="file-menu-btn" data-act="file-menu" aria-label="File" title="File" aria-haspopup="menu" aria-expanded="' + ui.fileMenu + '" aria-controls="file-menu">' + icon('menu') + '</button>'
+    + (ui.fileMenu ? '<div class="menu" id="file-menu" role="menu" aria-labelledby="file-menu-btn">'
+      + [['new-sys', 'plus', 'New system'], ['open', 'up', 'Open…'], ['download', 'down', 'Download Markdown'], ['sys-del', 'trash', 'Delete system…']].map(([a, ic, n]) => (a === 'sys-del' ? '<hr role="separator">' : '') + '<button type="button" role="menuitem" tabindex="-1" data-act="' + a + '"' + (a === 'sys-del' ? ' class="danger"' : '') + '>' + icon(ic) + n + '</button>').join('')
+      + '</div>' : '')
+    + '</div>'
+    + '<label for="sys-pick" class="lbl" style="position:absolute;left:-9999px">System</label><select class="field" id="sys-pick" style="width:auto;min-height:36px;font-weight:800">'
     + entries.map(([id, e]) => '<option value="' + esc(id) + '"' + (id === ui.homeDoc ? ' selected' : '') + '>' + esc(e.model ? e.model.system.label : id) + (e.model ? '' : ' (has errors)') + '</option>').join('')
     + '</select>' + (ui.isSample ? '<span class="chip">Sample</span>' : '') + '</div>'
     + '<div class="seg" role="group" aria-label="Mode">'
@@ -697,11 +707,7 @@ function renderHeader() {
     + '<button type="button" class="btn icon" data-act="redo" aria-label="Redo" ' + (hist.future.length ? '' : 'disabled') + '>' + icon('redo') + '</button>'
     + '<button type="button" class="btn" data-act="theme" title="Theme (light, dark or follow the system)">' + (ui.theme ? ui.theme[0].toUpperCase() + ui.theme.slice(1) : 'Auto') + '</button>'
     + '<button type="button" class="btn" data-act="md" aria-pressed="' + ui.mdOpen + '">' + icon('file') + 'Markdown</button>'
-    + '<div class="menuwrap" id="file-menu-wrap"><button type="button" class="btn" id="file-menu-btn" data-act="file-menu" aria-haspopup="menu" aria-expanded="' + ui.fileMenu + '" aria-controls="file-menu">File <span aria-hidden="true" class="caret">▾</span></button>'
-    + (ui.fileMenu ? '<div class="menu" id="file-menu" role="menu" aria-labelledby="file-menu-btn">'
-      + [['new-sys', 'plus', 'New system'], ['open', 'up', 'Open…'], ['download', 'down', 'Download Markdown'], ['sys-del', 'trash', 'Delete system…']].map(([a, ic, n]) => (a === 'sys-del' ? '<hr role="separator">' : '') + '<button type="button" role="menuitem" tabindex="-1" data-act="' + a + '"' + (a === 'sys-del' ? ' class="danger"' : '') + '>' + icon(ic) + n + '</button>').join('')
-      + '</div>' : '')
-    + '</div></div>';
+    + '</div>';
   const b = $('banner');
   b.innerHTML = ui.savePaused ? '<div class="banner">This system\'s saved file has an error, so saving is paused. Fix it in the Markdown pane and saving resumes.</div>' : '';
 }
