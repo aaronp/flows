@@ -1596,6 +1596,7 @@ const ui = {
   descPreview: false, trigAll: false, drafts: {}, confirm: null,
   fileMenu: false,
   msgOpen: true,     // step editor: the "Message & data" section is expanded
+  sysOpen: false,    // Systems mode: the Systems section is expanded, and the canvas shows the included systems
   openDlg: null,     // open "Open a system" dialog: { url, busy, error, dragging, opener }
   sysDel: null,      // open "Delete system" dialog: { opener } — the element focus returns to on Cancel   // the header's File menu (New system, Open file, Download) is open
   folded: new Set(), // Flow mode: included systems shown as their title over the participants their flows start at
@@ -1714,19 +1715,21 @@ function attempt(fn) {
 /* ---------- address: ?system=<slug>&flow=<slug>&mode=<mode>&theme=light|dark ----------
  * Other params (such as ?src=) are left as they are. Older #open-<system>--<flow> links still open
  * (the artifact viewer only passes a #fragment to the page). */
-const MODES = ['system', 'flow', 'galaxy', 'play']; // in header order: ⌘1–⌘4
-const MODE_NAMES = { system: 'Systems', flow: 'Flows', galaxy: 'Galaxy', play: 'Present' };
+const MODES = ['system', 'flow', 'play']; // in header order: ⌘1–⌘3
+const MODE_NAMES = { system: 'Systems', flow: 'Flows', play: 'Present' };
 const THEMES = ['light', 'dark'];
 function parseRoute(search, hash) {
   const q = new URLSearchParams(search);
   const old = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
-  const mode = q.get('mode') === 'present' ? 'play' : q.get('mode');
-  return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null };
+  // Galaxy was its own mode: it is now Systems with the Systems section open.
+  const mode = { present: 'play', galaxy: 'system' }[q.get('mode')] || q.get('mode');
+  return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null, galaxy: q.get('mode') === 'galaxy' };
 }
 let routeReady = false, routeKey = null;
 /** Open the system, flow and mode a link names. Unknown names say so rather than guessing. */
 function applyRoute(r) {
   routeReady = true;
+  if (r.galaxy) ui.sysOpen = true;
   if (r.system) {
     const found = [...library.entries()].find(([id, e]) => (e.model ? e.model.system.slug : id) === r.system);
     if (!found) toast('No saved system called "' + r.system + '".');
@@ -2090,7 +2093,7 @@ function sceneSvg(scene, opts) {
     } else o.push('<path class="target" d="' + rEllipse(A.x, A.y, A.nr + 8, A.nr + 8, rng(9)) + '"/>');
   }
   const vb = ui.cam || sceneBounds(scene);
-  return '<svg class="orbit" id="orbit" viewBox="' + [vb.x, vb.y, vb.w, vb.h].map(f1).join(' ') + '" role="img" aria-label="' + (scene.rings.length > 1 ? 'Galaxy' : 'System ring') + '">' + o.join('') + '</svg>';
+  return '<svg class="orbit" id="orbit" viewBox="' + [vb.x, vb.y, vb.w, vb.h].map(f1).join(' ') + '" role="img" aria-label="' + (scene.rings.length > 1 ? 'System ring with included systems' : 'System ring') + '">' + o.join('') + '</svg>';
 }
 
 /* ---------- play script (memoised per model / flow / collapse) ---------- */
@@ -2257,6 +2260,9 @@ function renderLeft() {
       '<section class="sec"><h2 class="lbl">Palette</h2><div class="palette">'
       + C.KIND_NAMES.map((k) => '<button type="button" class="btn" data-act="add-part" data-v="' + k + '"><span class="kicon" style="background:' + C.KIND_FILLS[k] + '">' + icon(k) + '</span>' + C.KIND_TITLES[k] + '</button>').join('')
       + '</div><p class="hint">Adds a participant to the ring. Drag one participant onto another to swap places.</p></section>'
+      + '<section class="sec"><h2 class="lbl"><button type="button" class="sec-toggle" data-act="sys-toggle" aria-expanded="' + ui.sysOpen + '" aria-controls="sys-body"><span class="caret" aria-hidden="true">' + (ui.sysOpen ? '▾' : '▸') + '</span>Systems' + (s.includes.length ? ' (' + s.includes.length + ')' : '') + '</button></h2>'
+      + (ui.sysOpen ? '<div id="sys-body" style="display:flex;flex-direction:column;gap:10px">' + galaxyLeft() + '</div>' : '') + '</section>'
+      + (ui.sysOpen ? problemsHtml() : '')
       + '<section class="sec"><h2 class="lbl">System</h2>'
       + '<label class="f">Centre label<input class="field" id="sys-label" value="' + esc(s.label) + '"></label>'
       + '<label class="f">Slug<input class="field mono" id="sys-slug" value="' + esc(s.slug) + '"></label>'
@@ -2267,7 +2273,6 @@ function renderLeft() {
       + '<section class="sec"><button type="button" class="btn danger" data-act="sys-del">Delete this system…</button></section>';
     return;
   }
-  if (ui.mode === 'galaxy') { el.innerHTML = galaxyLeft() + problemsHtml(); return; }
   const f = flow();
   const flowsHtml = '<section class="sec"><div class="row" style="justify-content:space-between"><h2 class="lbl">Flows</h2>' + (ui.mode === 'flow' ? '<button type="button" class="btn sm" data-act="add-flow">+ New flow</button>' : '') + '</div><ul class="list">'
     + model.flows.map((g) => '<li><button type="button" class="item" data-act="pick-flow" data-v="' + esc(g.slug) + '" aria-current="' + (g.slug === ui.flow) + '"><span class="body"><span class="t">' + esc(g.name) + '</span><span class="s">' + esc(g.slug) + '</span><span class="hint">' + (startsAt(g) ? 'starts at ' + esc(startsAt(g)) + ' · ' : '') + plural(g.steps.length, 'step') + '</span></span></button></li>').join('') + '</ul></section>';
@@ -2281,24 +2286,23 @@ function renderLeft() {
   }
   el.innerHTML = flowsHtml + '<section class="sec"><div class="row" style="justify-content:space-between"><h2 class="lbl">Steps in ' + esc(f.name) + '</h2><span class="chip" style="color:' + chainColor(ui.chain) + '">adding to chain ' + ui.chain + '</span></div>' + stepList(f) + '</section>'
     + problemsHtml()
-    + '<section class="sec"><h2 class="lbl">Clicking around</h2><p class="hint">Click a participant, then another, to add the next step: participants of included systems work too. Click the same participant twice for a self-message. Click a step number on the ring to fork a new chain from it. Drag a step in this list (or press <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>) to move it within its chain. Drag the background to pan when the galaxy is showing. <kbd>Esc</kbd> cancels, <kbd>Delete</kbd> removes the selected step.</p></section>';
+    + '<section class="sec"><h2 class="lbl">Clicking around</h2><p class="hint">Click a participant, then another, to add the next step: participants of included systems work too. Click the same participant twice for a self-message. Click a step number on the ring to fork a new chain from it. Drag a step in this list (or press <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>) to move it within its chain. Drag the background to pan when included systems are showing. <kbd>Esc</kbd> cancels, <kbd>Delete</kbd> removes the selected step.</p></section>';
 }
 function galaxyLeft() {
   const inc = model.system.includes;
   const lib = libModels();
   const others = [...library.entries()].filter(([id, e]) => id !== ui.homeDoc && e.model && !inc.includes(e.model.system.slug));
   const examples = C.exampleSystems().filter((m) => !lib.has(m.system.slug));
-  return '<section class="sec"><h2 class="lbl">In this galaxy</h2>'
+  return '<h3 class="lbl" style="margin:0">Included</h3>'
     + (inc.length ? '<ul class="list">' + inc.map((slug) => {
       const m = lib.get(slug);
       const used = C.includeUsage(model, slug).length;
       return '<li><button type="button" class="item" data-act="pick-ring" data-v="' + esc(slug) + '" aria-current="' + (ui.sel && ui.sel.type === 'system' && ui.sel.slug === slug) + '"><span class="kicon" style="background:' + (m ? m.system.fill : 'transparent') + '">' + icon('system') + '</span><span class="body"><span class="t">' + esc(m ? m.system.label : slug) + '</span><span class="hint">' + (m ? plural(m.system.participants.length, 'participant') + ' · ' + plural(m.flows.length, 'flow') + ' · ' + plural(used, 'step') + ' here' : 'not in your saved systems') + '</span></span></button></li>';
     }).join('') + '</ul>' : '<p class="hint">Nothing included yet. Included systems sit evenly around ' + esc(model.system.label) + ', and their participants become targets for steps.</p>')
-    + '<p class="hint">Drag a system onto another to swap places.</p></section>'
-    + '<section class="sec"><h2 class="lbl">Include a saved system</h2>'
-    + (others.length ? '<ul class="list">' + others.map(([id, e]) => '<li class="row" style="justify-content:space-between;flex-wrap:nowrap"><span style="min-width:0"><strong>' + esc(e.model.system.label) + '</strong> <span class="mono" style="color:var(--muted)">' + esc(e.model.system.slug) + '</span></span><button type="button" class="btn sm" data-act="include" data-v="' + esc(e.model.system.slug) + '">Include</button></li>').join('') + '</ul>' : '<p class="hint">' + (library.size > 1 ? 'Every other saved system is already in this galaxy.' : 'No other saved systems yet. Make one with <strong>+ New system</strong>.') + '</p>')
-    + (examples.length ? '<button type="button" class="btn" data-act="add-examples">Add example systems (' + esc(examples.map((m) => m.system.label).join(', ')) + ')</button>' : '')
-    + '</section>';
+    + '<p class="hint">Drag a system onto another to swap places.</p>'
+    + '<h3 class="lbl" style="margin:0">Include a saved system</h3>'
+    + (others.length ? '<ul class="list">' + others.map(([id, e]) => '<li class="row" style="justify-content:space-between;flex-wrap:nowrap"><span style="min-width:0"><strong>' + esc(e.model.system.label) + '</strong> <span class="mono" style="color:var(--muted)">' + esc(e.model.system.slug) + '</span></span><button type="button" class="btn sm" data-act="include" data-v="' + esc(e.model.system.slug) + '">Include</button></li>').join('') + '</ul>' : '<p class="hint">' + (library.size > 1 ? 'Every other saved system is already included.' : 'No other saved systems yet. Make one with <strong>+ New system</strong>.') + '</p>')
+    + (examples.length ? '<button type="button" class="btn" data-act="add-examples">Add example systems (' + esc(examples.map((m) => m.system.label).join(', ')) + ')</button>' : '');
 }
 /** Step numbers in the order the step list shows them: chain by chain, each in play order. */
 function stepOrder(f) {
@@ -2342,8 +2346,7 @@ function playList() {
 /* ---------- render: right ---------- */
 function renderRight() {
   const el = $('right');
-  if (ui.mode === 'system') { el.innerHTML = participantPanel(); return; }
-  if (ui.mode === 'galaxy') { el.innerHTML = systemPanel(); return; }
+  if (ui.mode === 'system') { el.innerHTML = ui.sel && ui.sel.type === 'system' ? systemPanel() : participantPanel(); return; }
   if (ui.mode === 'play') { el.innerHTML = playPanel(); return; }
   const f = flow();
   if (ui.sel && ui.sel.type === 'step') { el.innerHTML = stepEditor(f, C.findStep(f, ui.sel.n)); return; }
@@ -2376,10 +2379,8 @@ function participantPanel() {
     + '</section>';
 }
 
+/** Systems mode, an included system selected: its participants and flows, position, and removal. */
 function systemPanel() {
-  if (!(ui.sel && ui.sel.type === 'system')) {
-    return '<section class="sec"><h2 class="lbl">Galaxy</h2><p class="hint">' + esc(model.system.label) + ' sits in the middle. Select an included system to see its participants and flows, or open it to edit.</p><p class="hint">In Flow mode, steps can go to any participant you can see. A step can trigger one of that system\'s flows, which then plays as numbered sub-steps (3.1, 3.2 …).</p></section>';
-  }
   const slug = ui.sel.slug, m = libModels().get(slug);
   const used = C.includeUsage(model, slug).length;
   const id = [...library.entries()].find(([, e]) => e.model && e.model.system.slug === slug);
@@ -2390,8 +2391,8 @@ function systemPanel() {
     + '<div class="f"><span>Position · slot ' + (model.system.includes.indexOf(slug) + 1) + ' of ' + model.system.includes.length + '</span><div class="row"><button type="button" class="btn" data-act="sys-move" data-v="-1"' + (model.system.includes.length > 1 ? '' : ' disabled') + '>‹ Anticlockwise</button><button type="button" class="btn" data-act="sys-move" data-v="1"' + (model.system.includes.length > 1 ? '' : ' disabled') + '>Clockwise ›</button></div></div>'
     + (id ? '<button type="button" class="btn primary" data-act="open-sys" data-v="' + esc(id[0]) + '">Open ' + esc(m.system.label) + ' to edit</button>' : '')
     + '</section><section class="sec">'
-    + (ui.confirm && ui.confirm.kind === 'exclude' ? '<div class="confirm">Remove ' + esc(m ? m.system.label : slug) + ' from this galaxy' + (used ? ' and delete the ' + plural(used, 'step') + ' that reach into it' : '') + '? <button type="button" class="btn sm danger" data-act="exclude-yes">Remove</button><button type="button" class="btn sm" data-act="confirm-no">Cancel</button></div>'
-      : '<button type="button" class="btn danger" data-act="exclude">Remove from galaxy</button>')
+    + (ui.confirm && ui.confirm.kind === 'exclude' ? '<div class="confirm">Remove ' + esc(m ? m.system.label : slug) + ' from ' + esc(model.system.label) + (used ? ' and delete the ' + plural(used, 'step') + ' that reach into it' : '') + '? <button type="button" class="btn sm danger" data-act="exclude-yes">Remove</button><button type="button" class="btn sm" data-act="confirm-no">Cancel</button></div>'
+      : '<button type="button" class="btn danger" data-act="exclude">Remove from ' + esc(model.system.label) + '</button>')
     + '</section>';
 }
 
@@ -2720,7 +2721,7 @@ function stepEditor(f, s) {
     + '<input id="st-tag" list="tag-options" placeholder="' + (s.tags.length ? '' : 'Add a tag, press Enter') + '" autocomplete="off"></div><datalist id="tag-options">' + allTags().filter((t) => !s.tags.includes(t)).map((t) => '<option value="' + esc(t) + '">').join('') + '</datalist></div>'
     + '</section><section class="sec"><h2 class="lbl">Triggers</h2>'
     + '<label class="f">Sub-flow to start<select class="field" id="st-trig"><option value="">None: a plain message</option>' + tc.shown.map((c) => '<option value="' + esc(c.value) + '"' + (c.value === s.triggers ? ' selected' : '') + '>' + esc(c.label) + '</option>').join('') + '</select></label>'
-    + '<div class="row hint">' + (ui.trigAll ? 'Showing every flow in this galaxy.' : 'Showing flows that start at <span class="mono">' + esc(s.to) + '</span>' + (tc.hidden ? ' · ' + tc.hidden + ' hidden' : '') + '.')
+    + '<div class="row hint">' + (ui.trigAll ? 'Showing every flow in these systems.' : 'Showing flows that start at <span class="mono">' + esc(s.to) + '</span>' + (tc.hidden ? ' · ' + tc.hidden + ' hidden' : '') + '.')
     + ' <button type="button" class="btn sm" data-act="trig-all">' + (ui.trigAll ? 'Filter by ' + esc(s.to) : 'Show all') + '</button></div>'
     + triggerLink(s)
     + triggerHint(s)
@@ -2781,17 +2782,15 @@ let lastScene = null;
 function renderStage() {
   const el = $('stage');
   if (ui.mode === 'system') {
-    const scene = buildScene(false, false, new Set());
+    // With the Systems section open, the included systems sit around this one, to select and drag like participants.
+    const g = ui.sysOpen, scene = buildScene(g, false, new Set());
     lastScene = scene;
-    el.innerHTML = '<div class="stagebar"><span class="chip">' + plural(model.system.participants.length, 'participant') + ' · evenly spaced</span></div>'
-      + sceneSvg(scene, { sublabel: () => plural(model.system.participants.length, 'participant'), nodeHits: true, selectedNode: (ref) => ui.sel && ui.sel.type === 'participant' && ref === homeSlug() + '.' + ui.sel.slug, drag: ui.drag });
-    return;
-  }
-  if (ui.mode === 'galaxy') {
-    const scene = buildScene(true, false, new Set());
-    lastScene = scene;
-    el.innerHTML = '<div class="stagebar"><span class="chip">' + esc(model.system.label) + ' + ' + plural(model.system.includes.length, 'included system') + '</span>' + camBar(scene) + '</div>'
-      + sceneSvg(scene, { sublabel: (r) => (r.home ? 'home system' : ''), ringHits: true, shadeIdle: true, selectedRing: (slug) => ui.sel && ui.sel.type === 'system' && ui.sel.slug === slug });
+    el.innerHTML = '<div class="stagebar"><span class="chip">' + (g ? esc(model.system.label) + ' + ' + plural(model.system.includes.length, 'included system') : plural(model.system.participants.length, 'participant') + ' · evenly spaced') + '</span>' + (g ? camBar(scene) : '') + '</div>'
+      + sceneSvg(scene, {
+        sublabel: (r) => (r.home ? plural(model.system.participants.length, 'participant') : ''), nodeHits: true, ringHits: g, shadeIdle: g, drag: ui.drag,
+        selectedNode: (ref) => ui.sel && ui.sel.type === 'participant' && ref === homeSlug() + '.' + ui.sel.slug,
+        selectedRing: (slug) => ui.sel && ui.sel.type === 'system' && ui.sel.slug === slug
+      });
     return;
   }
   const f = flow();
@@ -2949,7 +2948,7 @@ function render(opts) {
 function setMode(m) {
   ui.mode = m; ui.pending = null; ui.cursor = null; ui.confirm = null; ui.drag = null; ui.ringDrag = null; ui.press = null; ui.cam = null;
   if (m !== 'play') stopPlay();
-  if (ui.sel && !((m === 'system' && ui.sel.type === 'participant') || (m === 'flow' && ui.sel.type === 'step') || (m === 'galaxy' && ui.sel.type === 'system'))) ui.sel = null;
+  if (ui.sel && !((m === 'system' && (ui.sel.type === 'participant' || ui.sel.type === 'system')) || (m === 'flow' && ui.sel.type === 'step'))) ui.sel = null;
   render();
 }
 /** ref: as drawn (fully qualified). Steps store home participants as bare slugs. */
@@ -3165,6 +3164,7 @@ document.addEventListener('click', (e) => {
       ui.folded = v === 'collapse' ? new Set(model.system.includes.filter((x) => libModels().has(x))) : new Set();
       ui.cam = null; renderStage();
     },
+    'sys-toggle': () => { ui.sysOpen = !ui.sysOpen; ui.cam = null; if (!ui.sysOpen && ui.sel && ui.sel.type === 'system') ui.sel = null; render(); document.querySelector('[data-act="sys-toggle"]').focus(); },
     'msg-toggle': () => { ui.msgOpen = !ui.msgOpen; ui.tp = null; renderRight(); document.querySelector('[data-act="msg-toggle"]').focus(); },
     'flow-view': () => { ui.flowView = v; ui.cursor = null; renderStage(); },
     'step-nav': () => { const s = C.findStep(f, Number(v)); ui.sel = { type: 'step', n: s.n }; ui.chain = s.chain; ui.pending = null; ui.confirm = null; ui.drafts.data = null; render(); },
@@ -3460,9 +3460,9 @@ document.addEventListener('keydown', (e) => {
   if (ui.schema && e.key === 'Escape') { e.preventDefault(); closeSchema(); return; }
   // Enter or Esc in a step label finishes typing; a second Esc then cancels the pending step.
   if (t && t.id === 'st-label' && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); t.blur(); return; }
-  // ⌘/Ctrl+1–4: switch view. ⌘/Ctrl+←/→ in Flows: previous/next step, ready to retitle.
+  // ⌘/Ctrl+1–3: switch view. ⌘/Ctrl+←/→ in Flows: previous/next step, ready to retitle.
   const cmd = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
-  if (cmd && /^[1-4]$/.test(e.key)) { e.preventDefault(); setMode(MODES[Number(e.key) - 1]); return; }
+  if (cmd && /^[1-3]$/.test(e.key)) { e.preventDefault(); setMode(MODES[Number(e.key) - 1]); return; }
   if (cmd && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && ui.mode === 'flow' && (!typing || t.id === 'st-label')) {
     e.preventDefault();
     const f = flow(), order = stepOrder(f);
@@ -3496,7 +3496,7 @@ document.addEventListener('keydown', (e) => {
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && ui.sel && (ui.mode === 'flow' || ui.mode === 'system')) {
     e.preventDefault();
-    ui.confirm = { kind: ui.sel.type === 'step' ? 'step' : 'part' };
+    ui.confirm = { kind: ui.sel.type === 'step' ? 'step' : ui.sel.type === 'system' ? 'exclude' : 'part' };
     renderRight();
     return;
   }
@@ -3532,7 +3532,9 @@ stage.addEventListener('pointerdown', (e) => {
     cx: e.clientX, cy: e.clientY, moved: false, onSvg: Boolean(e.target.closest('#orbit')),
     cam: lastScene ? (ui.cam || sceneBounds(lastScene)) : null, pxPerUnit: svg && lastScene ? pxPerUnit(svg, ui.cam || sceneBounds(lastScene)) : 1
   };
-  if ((ui.mode === 'system' && ui.press.node) || (ui.mode === 'galaxy' && ui.press.ring) || (ui.press.onSvg && !ui.press.node && !ui.press.badge && !ui.press.step && !ui.press.ring)) stage.setPointerCapture(e.pointerId);
+  // In Systems, an included system's participant stands for its whole system (select or drag the system).
+  if (ui.mode === 'system' && ui.press.node && C.isExternal(toLocal(ui.press.node))) { ui.press.ring = C.parseRef(ui.press.node).system; ui.press.node = null; }
+  if ((ui.mode === 'system' && (ui.press.node || ui.press.ring)) || (ui.press.onSvg && !ui.press.node && !ui.press.badge && !ui.press.step && !ui.press.ring)) stage.setPointerCapture(e.pointerId);
 });
 stage.addEventListener('pointermove', (e) => {
   const press = ui.press;
@@ -3555,7 +3557,7 @@ stage.addEventListener('pointermove', (e) => {
     renderStage();
     return;
   }
-  if (ui.mode === 'galaxy' && press.ring) {
+  if (ui.mode === 'system' && press.ring) {
     let target = null, best = Infinity;
     lastScene.rings.forEach((r) => { if (r.home || r.slug === press.ring) return; const d = Math.hypot(r.slotX - p.x, r.slotY - p.y); if (d < r.L.R * 1.2 && d < best) { best = d; target = r.slug; } });
     ui.ringDrag = { slug: press.ring, x: p.x, y: p.y, target };
@@ -3568,6 +3570,17 @@ stage.addEventListener('pointerup', () => {
   if (!press) return;
   const panned = press.moved && press.onSvg && !press.node && !press.badge && !press.step && !press.ring && lastScene && lastScene.rings.length > 1;
   if (panned) return;
+  if (ui.mode === 'system' && press.ring) {
+    const drag = ui.ringDrag;
+    ui.ringDrag = null;
+    if (press.moved) {
+      if (drag && drag.target) commit(C.swapIncludes(model, press.ring, drag.target));
+      else renderStage();
+      return;
+    }
+    ui.sel = { type: 'system', slug: press.ring }; ui.confirm = null; render();
+    return;
+  }
   if (ui.mode === 'system') {
     const drag = ui.drag;
     ui.drag = null;
@@ -3578,19 +3591,6 @@ stage.addEventListener('pointerup', () => {
     }
     if (press.moved) return;
     if (press.node) { ui.sel = { type: 'participant', slug: toLocal(press.node) }; ui.confirm = null; render(); }
-    else if (ui.sel) { ui.sel = null; render(); }
-    return;
-  }
-  if (ui.mode === 'galaxy') {
-    const drag = ui.ringDrag;
-    ui.ringDrag = null;
-    if (press.ring && press.moved) {
-      if (drag && drag.target) commit(C.swapIncludes(model, press.ring, drag.target));
-      else renderStage();
-      return;
-    }
-    if (press.moved) return;
-    if (press.ring) { ui.sel = { type: 'system', slug: press.ring }; ui.confirm = null; render(); }
     else if (ui.sel) { ui.sel = null; render(); }
     return;
   }

@@ -43,12 +43,12 @@ The address bar holds what is showing, so links can be bookmarked and Back works
 | `src` | URL of a system's Markdown to open in place of the samples (relative to the page) |
 | `system` | slug of the system to open |
 | `flow` | slug of the flow to show |
-| `mode` | `system`, `flow` (default), `galaxy`, `present` |
+| `mode` | `system`, `flow` (default), `present` (old `galaxy` links open `system` with its Systems section expanded) |
 | `theme` | `light`, `dark` (default: follow the system setting) |
 
 Older `#open-<system>--<flow>` links still open.
 
-Keys: ⌘/Ctrl+1–4 switch between Systems, Flows, Galaxy and Present; in Flows, ⌘/Ctrl+←/→ moves
+Keys: ⌘/Ctrl+1–3 switch between Systems, Flows and Present; in Flows, ⌘/Ctrl+←/→ moves
 to the previous/next step with its title selected.
 
 ## Publishing
