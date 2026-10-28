@@ -1,0 +1,33 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const libs = { 'js-yaml': 'node_modules/js-yaml/dist/js-yaml.min.js', 'marked': 'node_modules/marked/marked.min.js', 'dompurify': 'node_modules/dompurify/dist/purify.min.js' };
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/*', (route) => { const u = route.request().url(); for (const [k, f] of Object.entries(libs)) if (u.includes('cdnjs') && u.includes(k)) return route.fulfill({ body: fs.readFileSync(f), contentType: 'application/javascript' }); return u.startsWith('file:') ? route.continue() : route.abort(); });
+  fs.writeFileSync('page.html', '<!doctype html><html><head><meta charset="utf-8"></head><body>' + fs.readFileSync('flows.html', 'utf8') + '</body></html>');
+  await page.goto('file://' + process.cwd() + '/page.html');
+  await page.waitForTimeout(300);
+  const out = {};
+  await page.click('#left [data-act="pick-step"][data-v="3"]');
+  out.open = await page.getAttribute('[data-act="msg-toggle"]', 'aria-expanded');
+  await page.click('[data-act="msg-toggle"]');
+  out.closed = await page.getAttribute('[data-act="msg-toggle"]', 'aria-expanded');
+  out.summary = (await page.textContent('#msg-body')).replace(/\s+/g, ' ');
+  out.pickerGone = await page.locator('#tp-message').count();
+  out.focus = await page.evaluate(() => document.activeElement.getAttribute('data-act'));
+  await page.click('#left [data-act="pick-step"][data-v="2"]');
+  out.staysClosed = await page.getAttribute('[data-act="msg-toggle"]', 'aria-expanded');
+  await page.locator('#right').screenshot({ path: 'shots/q9-collapsed.png' });
+  await page.keyboard.press('Tab'); // no-op focus move
+  await page.focus('[data-act="msg-toggle"]');
+  await page.keyboard.press('Enter');
+  out.reopenedByKey = await page.getAttribute('[data-act="msg-toggle"]', 'aria-expanded');
+  await page.fill('#st-data', 'orderId: x');
+  out.dataStillWorks = await page.inputValue('#st-data');
+  out.errors = errors;
+  console.log(JSON.stringify(out, null, 1));
+  await browser.close();
+})();

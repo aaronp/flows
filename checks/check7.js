@@ -1,0 +1,28 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const libs = { 'js-yaml': 'node_modules/js-yaml/dist/js-yaml.min.js', 'marked': 'node_modules/marked/marked.min.js', 'dompurify': 'node_modules/dompurify/dist/purify.min.js' };
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/*', (route) => { const u = route.request().url(); for (const [k, f] of Object.entries(libs)) if (u.includes('cdnjs') && u.includes(k)) return route.fulfill({ body: fs.readFileSync(f), contentType: 'application/javascript' }); return u.startsWith('file:') ? route.continue() : route.abort(); });
+  fs.writeFileSync('page.html', '<!doctype html><html><head><meta charset="utf-8"></head><body>' + fs.readFileSync('flows.html', 'utf8') + '</body></html>');
+  await page.goto('file://' + process.cwd() + '/page.html');
+  await page.waitForTimeout(300);
+  const out = {};
+  const pill = async () => (await page.locator('#tp-result').locator('xpath=ancestor::div[contains(@class,"f")][1]').locator('.typepill .tp-link').count()) ? await page.locator('#tp-result').locator('xpath=ancestor::div[contains(@class,"f")][1]').locator('.typepill .tp-link').textContent() : null;
+  await page.click('#left [data-act="pick-step"][data-v="3"]');
+  out.before = await pill();
+  await page.selectOption('#st-trig', '');
+  out.cleared = await pill();
+  await page.click('[data-act="trig-all"]');
+  await page.selectOption('#st-trig', 'payments/authorise-payment');
+  out.set = await pill();
+  out.hint = await page.evaluate(() => document.getElementById('tp-result').closest('.f').nextElementSibling.textContent);
+  await page.selectOption('#st-trig', 'payments/refund');
+  out.toRefund = await pill();
+  out.errors = errors;
+  console.log(JSON.stringify(out));
+  await browser.close();
+})();
