@@ -611,23 +611,6 @@ function removeStep(model, flowSlug, n) {
 }
 
 /** The participant a flow starts from (its first step's sender), or null for an empty flow. */
-/**
- * The participants of `model` where its flows start or finish, in ring order: each
- * flow's entry (the first step's sender) and the receiver of every step nothing follows.
- * Why: a folded system in another system's flow view only needs the participants you'd
- * call into or hear back from. Only this system's own participants count, e.g.
- * ['gateway-api', 'ledger'].
- */
-function flowEndpoints(model) {
-  const ends = new Set();
-  model.flows.forEach((f) => {
-    const entry = flowEntry(f);
-    if (entry !== null) ends.add(entry);
-    const followed = new Set(f.steps.map((s) => s.after).filter((n) => n !== null));
-    f.steps.filter((s) => !followed.has(s.n)).forEach((s) => ends.add(s.to));
-  });
-  return model.system.participants.map((p) => p.slug).filter((slug) => ends.has(slug));
-}
 function flowEntry(flow) {
   const first = flow.steps.find((s) => s.after === null);
   return first ? first.from : null;
@@ -739,18 +722,13 @@ function ringLayout(count, size) {
 }
 
 /**
- * Like ringLayout, but the participants sit together on the arc facing angle `facing`
- * (radians, 0 = right, π/2 = down) instead of all round the ring, `gap` radians apart
- * (narrower when there are many). Why: a folded system's few entry and exit points face
- * the home system, so arrows into them don't cross the ring. e.g. arcLayout(2, 320, Math.PI, 0.6).
+ * Participants in one row through the ring, `spacing` apart, just below its centre (the
+ * system's title sits above). Why: a folded system reads as its title over its entry points,
+ * e.g. lineLayout(3, 480, 130). Labels go below, so th points down.
  */
-function arcLayout(count, size, facing, gap) {
-  if (!(gap > 0)) throw new Error('bug: arcLayout gap must be positive');
-  const base = ringLayout(count, size), step = Math.min(gap, (2 * Math.PI) / Math.max(count, 1));
-  const pos = Array.from({ length: count }, (_, i) => {
-    const th = facing + (i - (count - 1) / 2) * step;
-    return { x: base.c + base.R * Math.cos(th), y: base.c + base.R * Math.sin(th), th };
-  });
+function lineLayout(count, size, spacing) {
+  const base = ringLayout(count, size), y = base.c + size * 0.1;
+  const pos = Array.from({ length: count }, (_, i) => ({ x: base.c + (i - (count - 1) / 2) * spacing, y, th: Math.PI / 2 }));
   return { ...base, pos };
 }
 /** Self-message loop: an ellipse whose long axis runs from the participant toward the
@@ -1246,6 +1224,6 @@ const FlowsCore = {
   updateSystem, addParticipant, updateParticipant, swapParticipants, stepsUsing, removeParticipant,
   includeSystem, includeUsage, removeInclude, swapIncludes, renameSystemRefs, renameExternalParticipant, renameExternalFlow,
   addFlow, renameFlow, removeFlow, chainTail, nextChain, addStep, updateStep, removeStep, chainSequence, moveStep,
-  systemReferences, flowEndpoints, namedFields, arcLayout, timeline, playPhases, playScript, flowEntry, flowResult, resultAfterTrigger, phasesAt, galaxyProblems, ringLayout, selfLoop, mermaidFor, serialize, parse, findFlow, findStep, participantIndex
+  systemReferences, namedFields, lineLayout, timeline, playPhases, playScript, flowEntry, flowResult, resultAfterTrigger, phasesAt, galaxyProblems, ringLayout, selfLoop, mermaidFor, serialize, parse, findFlow, findStep, participantIndex
 };
 if (typeof module !== 'undefined') module.exports = FlowsCore;

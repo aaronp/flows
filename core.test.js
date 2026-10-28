@@ -459,22 +459,11 @@ test('number, date and object are built-in types: examples, checks and round-tri
   assert.equal(C.schemaError(m, null, { slug: 'date', title: 'Date', summary: '', fields: [] }), '"date" is a built-in type; pick another id.');
 });
 
-test('flowEndpoints: where each flow starts and where its chains finish, in ring order', () => {
-  const l = lib();
-  // payments: authorise starts at gateway-api; its chains end at gateway-api (self result) and ledger; refund ends at ledger.
-  assert.deepEqual(C.flowEndpoints(l.get('payments')), ['gateway-api', 'ledger']);
-  assert.deepEqual(C.flowEndpoints(C.emptyModel()), []);
-  // A step pointing into another system is not one of this system's participants.
-  const sf = l.get('storefront');
-  assert.ok(C.flowEndpoints(sf).every((x) => !C.isExternal(x)));
-});
-
-test('arcLayout centres participants on the facing angle, gap apart', () => {
-  const L = C.arcLayout(3, 320, Math.PI, 0.5);
-  assert.deepEqual(L.pos.map((p) => Number(p.th.toFixed(3))), [Number((Math.PI - 0.5).toFixed(3)), Number(Math.PI.toFixed(3)), Number((Math.PI + 0.5).toFixed(3))]);
-  assert.ok(L.pos[1].x < L.c, 'the middle one faces left');
-  assert.equal(C.arcLayout(1, 320, 0, 0.5).pos[0].th, 0);
-  assert.throws(() => C.arcLayout(2, 320, 0, 0), /bug/);
+test('lineLayout puts participants in one centred row below the middle, labels down', () => {
+  const L = C.lineLayout(3, 480, 130);
+  assert.deepEqual(L.pos.map((p) => p.x), [L.c - 130, L.c, L.c + 130]);
+  assert.ok(L.pos.every((p) => p.y === L.pos[0].y && p.y > L.c && p.th === Math.PI / 2));
+  assert.equal(C.lineLayout(1, 320, 130).pos[0].x, 160);
 });
 
 test('namedFields drops rows with no name yet, so they never block or reach the file', () => {

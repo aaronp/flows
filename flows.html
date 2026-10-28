@@ -911,23 +911,6 @@ function removeStep(model, flowSlug, n) {
 }
 
 /** The participant a flow starts from (its first step's sender), or null for an empty flow. */
-/**
- * The participants of `model` where its flows start or finish, in ring order: each
- * flow's entry (the first step's sender) and the receiver of every step nothing follows.
- * Why: a folded system in another system's flow view only needs the participants you'd
- * call into or hear back from. Only this system's own participants count, e.g.
- * ['gateway-api', 'ledger'].
- */
-function flowEndpoints(model) {
-  const ends = new Set();
-  model.flows.forEach((f) => {
-    const entry = flowEntry(f);
-    if (entry !== null) ends.add(entry);
-    const followed = new Set(f.steps.map((s) => s.after).filter((n) => n !== null));
-    f.steps.filter((s) => !followed.has(s.n)).forEach((s) => ends.add(s.to));
-  });
-  return model.system.participants.map((p) => p.slug).filter((slug) => ends.has(slug));
-}
 function flowEntry(flow) {
   const first = flow.steps.find((s) => s.after === null);
   return first ? first.from : null;
@@ -1039,18 +1022,13 @@ function ringLayout(count, size) {
 }
 
 /**
- * Like ringLayout, but the participants sit together on the arc facing angle `facing`
- * (radians, 0 = right, π/2 = down) instead of all round the ring, `gap` radians apart
- * (narrower when there are many). Why: a folded system's few entry and exit points face
- * the home system, so arrows into them don't cross the ring. e.g. arcLayout(2, 320, Math.PI, 0.6).
+ * Participants in one row through the ring, `spacing` apart, just below its centre (the
+ * system's title sits above). Why: a folded system reads as its title over its entry points,
+ * e.g. lineLayout(3, 480, 130). Labels go below, so th points down.
  */
-function arcLayout(count, size, facing, gap) {
-  if (!(gap > 0)) throw new Error('bug: arcLayout gap must be positive');
-  const base = ringLayout(count, size), step = Math.min(gap, (2 * Math.PI) / Math.max(count, 1));
-  const pos = Array.from({ length: count }, (_, i) => {
-    const th = facing + (i - (count - 1) / 2) * step;
-    return { x: base.c + base.R * Math.cos(th), y: base.c + base.R * Math.sin(th), th };
-  });
+function lineLayout(count, size, spacing) {
+  const base = ringLayout(count, size), y = base.c + size * 0.1;
+  const pos = Array.from({ length: count }, (_, i) => ({ x: base.c + (i - (count - 1) / 2) * spacing, y, th: Math.PI / 2 }));
   return { ...base, pos };
 }
 /** Self-message loop: an ellipse whose long axis runs from the participant toward the
@@ -1546,7 +1524,7 @@ const FlowsCore = {
   updateSystem, addParticipant, updateParticipant, swapParticipants, stepsUsing, removeParticipant,
   includeSystem, includeUsage, removeInclude, swapIncludes, renameSystemRefs, renameExternalParticipant, renameExternalFlow,
   addFlow, renameFlow, removeFlow, chainTail, nextChain, addStep, updateStep, removeStep, chainSequence, moveStep,
-  systemReferences, flowEndpoints, namedFields, arcLayout, timeline, playPhases, playScript, flowEntry, flowResult, resultAfterTrigger, phasesAt, galaxyProblems, ringLayout, selfLoop, mermaidFor, serialize, parse, findFlow, findStep, participantIndex
+  systemReferences, namedFields, lineLayout, timeline, playPhases, playScript, flowEntry, flowResult, resultAfterTrigger, phasesAt, galaxyProblems, ringLayout, selfLoop, mermaidFor, serialize, parse, findFlow, findStep, participantIndex
 };
 if (typeof module !== 'undefined') module.exports = FlowsCore;
 
@@ -1558,7 +1536,8 @@ if (typeof module !== 'undefined') module.exports = FlowsCore;
 const C = FlowsCore;
 const SIZE = 640;          // home ring, world units
 const INC_SIZE = 480;      // included rings
-const FOLD_SIZE = 320;     // included rings folded down to their entry/exit participants (Flow mode)
+const FOLD_SIZE = 320;     // included rings folded to a title over their entry participants (Flow mode), at least
+const FOLD_SPACING = 130;  // between a folded ring's participants, room for their labels
 const SLOT_SECONDS = 1.6;
 const CHAINS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const chainColor = (c) => {
@@ -1620,7 +1599,7 @@ const ui = {
   msgOpen: true,     // step editor: the "Message & data" section is expanded
   openDlg: null,     // open "Open a system" dialog: { url, busy, error, dragging, opener }
   sysDel: null,      // open "Delete system" dialog: { opener } — the element focus returns to on Cancel   // the header's File menu (New system, Open file, Download) is open
-  folded: new Set(), // Flow mode: included systems shown with only the participants flows start or finish at
+  folded: new Set(), // Flow mode: included systems shown as their title over the participants their flows start at
   flowView: 'orbit', // Flow mode canvas: 'orbit' (the system ring) or 'sequence'
   tp: null,       // open type picker: { kind: 'message' | 'result', q, hi }
   schema: null,   // open schema editor: { orig, draft, readOnly, system, error, confirmDel }
@@ -1904,10 +1883,10 @@ function rPoly(pts, px, py) {
  */
 /**
  * Participants of included system `sys` (model `m`) that a folded ring keeps: where its
- * flows start or finish, plus any the home system's steps already reach, so no arrow loses its end.
+ * flows start, plus any the home system's steps already reach, so no arrow loses its end.
  */
 function foldedParticipants(sys, m) {
-  const keep = new Set(C.flowEndpoints(m));
+  const keep = new Set(m.flows.map(C.flowEntry).filter(Boolean));
   model.flows.forEach((f) => f.steps.forEach((s) => [s.from, s.to].forEach((r) => {
     if (C.isExternal(r) && C.parseRef(r).system === sys) keep.add(C.parseRef(r).slug);
   })));
@@ -1924,7 +1903,8 @@ function buildScene(withIncludes, collapse, fold) {
       const a = -Math.PI / 2 + (i * 2 * Math.PI) / k;
       const m = lib.get(slug) || null;
       const folded = Boolean(m) && !collapse && fold.has(slug);
-      const size = folded ? FOLD_SIZE : INC_SIZE, G = SIZE / 2 + size / 2 + 90;
+      // A folded ring widens to fit its row of entry points.
+      const size = folded ? Math.max(FOLD_SIZE, (foldedParticipants(slug, m).length - 1) * FOLD_SPACING / 0.55) : INC_SIZE, G = SIZE / 2 + size / 2 + 90;
       const drag = ui.ringDrag && ui.ringDrag.slug === slug;
       rings.push({ slug, model: m, cx: drag ? ui.ringDrag.x : G * Math.cos(a), cy: drag ? ui.ringDrag.y : G * Math.sin(a), slotX: G * Math.cos(a), slotY: G * Math.sin(a), size, home: false, collapsed: collapse || !m, missing: !m, folded });
     });
@@ -1933,8 +1913,7 @@ function buildScene(withIncludes, collapse, fold) {
   rings.forEach((r) => {
     const parts = !r.model ? [] : r.folded ? foldedParticipants(r.slug, r.model) : r.model.system.participants;
     r.shown = parts.length;
-    // A folded ring gathers its participants on the side facing the home system.
-    const L = r.folded ? C.arcLayout(parts.length, r.size, Math.atan2(-r.cy, -r.cx), 0.75) : C.ringLayout(parts.length, r.size);
+    const L = r.folded ? C.lineLayout(parts.length, r.size, FOLD_SPACING) : C.ringLayout(parts.length, r.size);
     r.L = L; r.ox = r.cx - r.size / 2; r.oy = r.cy - r.size / 2;
     r.starters = new Set(r.model ? r.model.flows.map(C.flowEntry).filter(Boolean) : []);
     parts.forEach((p, i) => {
@@ -2011,12 +1990,14 @@ function sceneSvg(scene, opts) {
     const big = r.collapsed ? 1.6 : 1;
     const centre = '<text class="centre" style="font-size:' + f1(32 * k * big) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy - 4 * k) + '" text-anchor="middle">' + esc(sys ? sys.label : r.slug) + '</text>';
     o.push(!r.home && sys ? '<a class="ring-link" href="' + routeHref(r.slug, null) + '" aria-label="Open ' + esc(sys.label) + '">' + centre + '</a>' : centre);
-    const sub = r.missing ? 'not in your saved systems' : r.collapsed ? plural(sys.participants.length, 'participant') + ' · collapsed' : r.folded ? r.shown + ' of ' + plural(sys.participants.length, 'participant') : opts.sublabel ? opts.sublabel(r) : '';
+    // Folded: a rule under the title, its entry points in a row below.
+    if (r.folded) { const w = R * 0.9; o.push('<path class="disc-line" d="' + rLine(r.cx - w, r.cy + 10 * k, r.cx + w, r.cy + 10 * k, rng(hash('rule' + r.slug))) + '"/>'); }
+    const sub = r.missing ? 'not in your saved systems' : r.collapsed ? plural(sys.participants.length, 'participant') + ' · collapsed' : r.folded ? '' : opts.sublabel ? opts.sublabel(r) : '';
     o.push('<text class="centre-sub" style="font-size:' + f1(Math.max(11, 12 * k * big)) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy + 20 * k * big) + '" text-anchor="middle">' + esc(sub) + '</text>');
     if (opts.foldToggles && !r.home && sys) {
       // Expand / collapse this system: a small button on the ring's rim, top right.
       const bx = r.cx + R * Math.SQRT1_2 + 10, by = r.cy - R * Math.SQRT1_2 - 10;
-      o.push('<g class="fold-btn" data-act="fold" data-v="' + esc(r.slug) + '" role="button" tabindex="0" aria-pressed="' + !r.folded + '" aria-label="' + (r.folded ? 'Expand ' : 'Collapse ') + esc(sys.label) + '"><title>' + (r.folded ? 'Show all of ' : 'Show only where flows start or finish in ') + esc(sys.label) + '</title>'
+      o.push('<g class="fold-btn" data-act="fold" data-v="' + esc(r.slug) + '" role="button" tabindex="0" aria-pressed="' + !r.folded + '" aria-label="' + (r.folded ? 'Expand ' : 'Collapse ') + esc(sys.label) + '"><title>' + (r.folded ? 'Show all ' + plural(sys.participants.length, 'participant') + ' of ' : 'Show only where flows start in ') + esc(sys.label) + '</title>'
         + '<circle cx="' + f1(bx) + '" cy="' + f1(by) + '" r="20"/><path d="M' + f1(bx - 8) + ' ' + f1(by) + 'h16' + (r.folded ? 'M' + f1(bx) + ' ' + f1(by - 8) + 'v16' : '') + '"/></g>');
     }
     if (r.home && !sys.participants.length) o.push('<text class="empty-tx" x="0" y="48" text-anchor="middle">Add participants from the palette</text>');
