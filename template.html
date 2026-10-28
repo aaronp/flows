@@ -71,6 +71,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menu [role="menuitem"].danger { color: var(--err-ink); }
 .dialog.narrow { width: min(560px, 100%); }
 .dialog.narrow .dialog-main { flex: 0 1 auto; }
+.drop { border: 2px dashed var(--line-strong); border-radius: 12px; padding: 28px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-weight: 600; }
+.drop svg { width: 20px; height: 20px; }
+.drop.on { border-color: var(--accent); background: var(--accent-soft); }
 .warnbox { border: 1px solid var(--err-ink); border-left-width: 4px; border-radius: 8px; padding: 10px 12px; color: var(--ink); }
 .sd-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
 .chip.bad { color: var(--err-ink); }

@@ -14,20 +14,47 @@ diagrams plus `system`, `schema`, `step` and `md` fenced blocks).
 | `flows.html` | The built page (single file). Open it in a browser. |
 | `build.js` | Rebuilds `flows.html` from the three files above. |
 | `core.test.js` | Self-contained `node:test` tests for the core. |
+| `examples/` | Data-only repo templates that point at the published viewer. |
 | `checks/` | Playwright scripts used to check the UI during development (see below). |
 
 ## Run
 
 ```sh
-npm install        # js-yaml, marked, dompurify (the tests need js-yaml)
-npm test           # core tests
-npm run build      # writes flows.html
+make test          # core tests (installs js-yaml, marked, dompurify on first run)
+make build         # writes flows.html
+make dev           # builds, then serves it on http://localhost:8000 (needs bun; PORT=… to change)
 ```
 
-Open `flows.html` directly in a browser. It loads js-yaml, marked and DOMPurify from
-cdnjs. Saving to the shared store (`window.claude.db`) only works when the page is hosted
-as a Claude artifact; elsewhere it runs on the built-in sample and says "Not saved". Use
-**File → Download Markdown / Open file** to keep your work.
+`make dev` serves `flows.html` at `/` and everything else from this folder, as on GitHub Pages,
+so `http://localhost:8000/?src=examples/acme-flows/flows.md` works. You can also open
+`flows.html` directly in a browser. It loads js-yaml, marked and DOMPurify from cdnjs.
+Edits save automatically: to the shared store (`window.claude.db`) when the page is hosted
+as a Claude artifact, otherwise to this browser's localStorage. A file opened with `?src=` is
+shown on its own and not saved, so a shared link never overwrites your systems.
+**File → Open…** takes a dropped or chosen `.md` file or a URL (recently opened URLs are
+listed); **File → Download Markdown** saves the open system as a file.
+
+## Address
+
+The address bar holds what is showing, so links can be bookmarked and Back works:
+
+| Param | Values |
+|---|---|
+| `src` | URL of a system's Markdown to open in place of the samples (relative to the page) |
+| `system` | slug of the system to open |
+| `flow` | slug of the flow to show |
+| `mode` | `system`, `flow` (default), `galaxy`, `play` |
+| `theme` | `light`, `dark` (default: follow the system setting) |
+
+Older `#open-<system>--<flow>` links still open.
+
+## Publishing
+
+`.github/workflows/pages.yml` tests, builds and publishes the page to GitHub Pages with
+`examples/` beside it. One-time setup: Settings → Pages → Source: **GitHub Actions**.
+
+`examples/acme-flows` is a data-only repo template: just `flows.md`, a redirect to this
+viewer, and its own Pages workflow. See its README (`make clone REPO=you/your-repo`).
 
 ## UI checks
 

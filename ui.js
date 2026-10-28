@@ -64,13 +64,15 @@ const ui = {
   descPreview: false, trigAll: false, drafts: {}, confirm: null,
   fileMenu: false,
   msgOpen: true,     // step editor: the "Message & data" section is expanded
+  openDlg: null,     // open "Open a system" dialog: { url, busy, error, dragging, opener }
   sysDel: null,      // open "Delete system" dialog: { opener } — the element focus returns to on Cancel   // the header's File menu (New system, Open file, Download) is open
   folded: new Set(), // Flow mode: included systems shown with only the participants flows start or finish at
   flowView: 'orbit', // Flow mode canvas: 'orbit' (the system ring) or 'sequence'
   tp: null,       // open type picker: { kind: 'message' | 'result', q, hi }
   schema: null,   // open schema editor: { orig, draft, readOnly, system, error, confirmDel }
   mdOpen: false, mdText: '', mdError: null, isSample: false,
-  store: { state: 'loading', msg: 'Loading…' }, savePaused: false
+  store: { state: 'loading', msg: 'Loading…' }, savePaused: false,
+  theme: null      // 'light' | 'dark' | null (follow the system setting)
 };
 const hist = { past: [], future: [], key: null, at: 0 };
 
@@ -177,41 +179,63 @@ function attempt(fn) {
   }
 }
 
-/* ---------- links: #open-<system>--<flow> ----------
- * The artifact viewer only passes a plain #name to the page (no query strings), so a
- * system/flow link is a fragment of letters, digits and dashes. Slugs never contain "--". */
-const routeHash = (sys, fl) => '#open-' + sys + (fl ? '--' + fl : '');
-function parseRoute(hash) {
-  const m = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
-  return m ? { system: m[1], flow: m[2] || null } : null;
+/* ---------- address: ?system=<slug>&flow=<slug>&mode=<mode>&theme=light|dark ----------
+ * Other params (such as ?src=) are left as they are. Older #open-<system>--<flow> links still open
+ * (the artifact viewer only passes a #fragment to the page). */
+const MODES = ['system', 'flow', 'galaxy', 'play'];
+const THEMES = ['light', 'dark'];
+function parseRoute(search, hash) {
+  const q = new URLSearchParams(search);
+  const old = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
+  const mode = q.get('mode');
+  return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null };
 }
-let routeReady = false;
-/** Open the system (and flow) a link names. Unknown names say so rather than guessing. */
-function applyRoute(hash) {
-  const r = parseRoute(hash);
+let routeReady = false, routeKey = null;
+/** Open the system, flow and mode a link names. Unknown names say so rather than guessing. */
+function applyRoute(r) {
   routeReady = true;
-  if (!r) { syncHash(); return; }
-  if (hash === currentRoute()) return; // our own address update: nothing to open
-  const found = [...library.entries()].find(([id, e]) => (e.model ? e.model.system.slug : id) === r.system);
-  if (!found) { toast('No saved system called "' + r.system + '".'); syncHash(); return; }
-  if (found[0] !== ui.homeDoc) openHome(found[0]);
+  if (r.system) {
+    const found = [...library.entries()].find(([id, e]) => (e.model ? e.model.system.slug : id) === r.system);
+    if (!found) toast('No saved system called "' + r.system + '".');
+    else if (found[0] !== ui.homeDoc) openHome(found[0]);
+  }
   if (r.flow) {
     if (model.flows.some((f) => f.slug === r.flow)) { ui.flow = r.flow; ui.sel = null; ui.pending = null; ui.chain = 'A'; ui.playT = 0; }
     else toast(model.system.label + ' has no flow "' + r.flow + '".');
   }
-  if (r.flow && ui.mode !== 'play') ui.mode = 'flow'; // a flow link shows the flow; a system link keeps the mode
-  render();
+  if (r.mode) setMode(r.mode);
+  else { if (r.flow && ui.mode !== 'play') ui.mode = 'flow'; render(); } // a flow link shows the flow; a system link keeps the mode
 }
-const currentRoute = () => routeHash(homeSlug(), ui.mode === 'flow' || ui.mode === 'play' ? ui.flow : null);
-/** Keep the address in step with what is open, so it can be bookmarked and Back works. */
-function syncHash() {
+/** A link to a system (and flow), keeping ?src= and ?theme=. Plain clicks on it are handled in-page (see the click handler). */
+function routeHref(sys, fl) {
+  const q = new URLSearchParams(location.search);
+  ['system', 'flow', 'mode'].forEach((k) => q.delete(k));
+  q.set('system', sys);
+  if (fl) q.set('flow', fl);
+  return esc('?' + q.toString().replace(/%2F/gi, '/').replace(/%3A/gi, ':'));
+}
+function currentRoute() {
+  const q = new URLSearchParams(location.search);
+  q.set('system', homeSlug());
+  if (ui.mode === 'flow' || ui.mode === 'play') q.set('flow', ui.flow); else q.delete('flow');
+  if (ui.mode !== 'flow') q.set('mode', ui.mode); else q.delete('mode');
+  if (ui.theme) q.set('theme', ui.theme); else q.delete('theme');
+  return '?' + q.toString().replace(/%2F/gi, '/').replace(/%3A/gi, ':');
+}
+/** Keep the address in step with what is open, so it can be bookmarked and Back works: a new screen is a new history entry. */
+function syncUrl() {
   if (!routeReady || !model) return;
-  const h = currentRoute();
-  if (location.hash === h) return;
-  try { location.hash = h; } catch (e) { /* some views don't allow it; links still work */ }
+  const s = currentRoute(), key = homeSlug() + ' ' + ui.mode + ' ' + ui.flow, push = routeKey !== null && key !== routeKey;
+  routeKey = key;
+  if (location.search === s && !location.hash) return;
+  try { history[push ? 'pushState' : 'replaceState'](null, '', location.pathname + s); } catch (e) { /* some views don't allow it; links still work */ }
 }
-window.addEventListener('hashchange', () => applyRoute(location.hash));
-const initialHash = location.hash;
+window.addEventListener('popstate', () => { routeKey = null; applyRoute(parseRoute(location.search, location.hash)); });
+/** No theme follows the system setting; template.html has the [data-theme] blocks. */
+function applyTheme() {
+  if (ui.theme) document.documentElement.dataset.theme = ui.theme;
+  else delete document.documentElement.dataset.theme;
+}
 
 /* ---------- switching systems ---------- */
 function openHome(id, opts) {
@@ -432,7 +456,7 @@ function sceneSvg(scene, opts) {
     if (opts.ringHits && !r.home) o.push('<circle class="ring-hit" data-ring="' + esc(r.slug) + '" cx="' + f1(r.cx) + '" cy="' + f1(r.cy) + '" r="' + f1(R + r.L.nr) + '"/>');
     const big = r.collapsed ? 1.6 : 1;
     const centre = '<text class="centre" style="font-size:' + f1(32 * k * big) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy - 4 * k) + '" text-anchor="middle">' + esc(sys ? sys.label : r.slug) + '</text>';
-    o.push(!r.home && sys ? '<a class="ring-link" href="' + routeHash(r.slug, null) + '" aria-label="Open ' + esc(sys.label) + '">' + centre + '</a>' : centre);
+    o.push(!r.home && sys ? '<a class="ring-link" href="' + routeHref(r.slug, null) + '" aria-label="Open ' + esc(sys.label) + '">' + centre + '</a>' : centre);
     const sub = r.missing ? 'not in your saved systems' : r.collapsed ? plural(sys.participants.length, 'participant') + ' · collapsed' : r.folded ? r.shown + ' of ' + plural(sys.participants.length, 'participant') : opts.sublabel ? opts.sublabel(r) : '';
     o.push('<text class="centre-sub" style="font-size:' + f1(Math.max(11, 12 * k * big)) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy + 20 * k * big) + '" text-anchor="middle">' + esc(sub) + '</text>');
     if (opts.foldToggles && !r.home && sys) {
@@ -667,10 +691,11 @@ function renderHeader() {
     + '<div class="row">'
     + '<button type="button" class="btn icon" data-act="undo" aria-label="Undo" ' + (hist.past.length ? '' : 'disabled') + '>' + icon('undo') + '</button>'
     + '<button type="button" class="btn icon" data-act="redo" aria-label="Redo" ' + (hist.future.length ? '' : 'disabled') + '>' + icon('redo') + '</button>'
+    + '<button type="button" class="btn" data-act="theme" title="Theme (light, dark or follow the system)">' + (ui.theme ? ui.theme[0].toUpperCase() + ui.theme.slice(1) : 'Auto') + '</button>'
     + '<button type="button" class="btn" data-act="md" aria-pressed="' + ui.mdOpen + '">' + icon('file') + 'Markdown</button>'
     + '<div class="menuwrap" id="file-menu-wrap"><button type="button" class="btn" id="file-menu-btn" data-act="file-menu" aria-haspopup="menu" aria-expanded="' + ui.fileMenu + '" aria-controls="file-menu">File <span aria-hidden="true" class="caret">▾</span></button>'
     + (ui.fileMenu ? '<div class="menu" id="file-menu" role="menu" aria-labelledby="file-menu-btn">'
-      + [['new-sys', 'plus', 'New system'], ['load', 'up', 'Open file…'], ['download', 'down', 'Download Markdown'], ['sys-del', 'trash', 'Delete system…']].map(([a, ic, n]) => (a === 'sys-del' ? '<hr role="separator">' : '') + '<button type="button" role="menuitem" tabindex="-1" data-act="' + a + '"' + (a === 'sys-del' ? ' class="danger"' : '') + '>' + icon(ic) + n + '</button>').join('')
+      + [['new-sys', 'plus', 'New system'], ['open', 'up', 'Open…'], ['download', 'down', 'Download Markdown'], ['sys-del', 'trash', 'Delete system…']].map(([a, ic, n]) => (a === 'sys-del' ? '<hr role="separator">' : '') + '<button type="button" role="menuitem" tabindex="-1" data-act="' + a + '"' + (a === 'sys-del' ? ' class="danger"' : '') + '>' + icon(ic) + n + '</button>').join('')
       + '</div>' : '')
     + '</div></div>';
   const b = $('banner');
@@ -859,7 +884,7 @@ function triggerLink(s) {
   const [sys, fl] = s.triggers.includes('/') ? s.triggers.split('/') : [homeSlug(), s.triggers];
   const m = libModels().get(sys), t = m ? m.flows.find((g) => g.slug === fl) : null;
   if (!t) return '';
-  return '<a class="sublink" href="' + routeHash(sys, fl) + '">' + esc(m.system.label) + ' : ' + esc(t.name) + ' →</a>';
+  return '<a class="sublink" href="' + routeHref(sys, fl) + '">' + esc(m.system.label) + ' : ' + esc(t.name) + ' →</a>';
 }
 function triggerHint(s) {
   if (!s.triggers) return '';
@@ -1051,8 +1076,29 @@ function sysDelDialog() {
       : '<p class="hint" style="margin:0">No other system includes it.</p>')
     + '</div><footer class="row"><span class="spacer"></span><button type="button" class="btn" id="sd-cancel" data-act="sys-del-no">Cancel</button><button type="button" class="btn danger" data-act="sys-del-yes">Delete ' + esc(s.label) + '</button></footer></div>';
 }
+/** The "Open a system" dialog: drop or choose a file, or fetch one from a URL (recent URLs listed). */
+function openDialog() {
+  const d = ui.openDlg, recent = recentUrls();
+  return '<div class="scrim" data-act="od-close"></div><div class="dialog narrow" role="dialog" aria-modal="true" aria-labelledby="od-heading">'
+    + '<header class="row"><h2 id="od-heading" style="margin:0;font-size:18px">Open a system</h2><span class="spacer"></span><button type="button" class="btn icon" data-act="od-close" aria-label="Close">✕</button></header>'
+    + '<div class="dialog-main">'
+    + '<div id="od-drop" class="drop' + (d.dragging ? ' on' : '') + '">' + icon('up') + '<span>Drop a .md file here, or</span><button type="button" class="btn" id="od-file" data-act="od-file">Choose file…</button></div>'
+    + '<form id="od-form" class="f"><label for="od-url">Or open from a URL</label><div class="row"><input id="od-url" type="url" class="field mono" placeholder="https://…/flows.md" value="' + esc(d.url) + '" style="flex:1">'
+    + '<button type="submit" class="btn primary"' + (d.url.trim() === '' || d.busy ? ' disabled' : '') + '>' + (d.busy ? 'Opening…' : 'Open') + '</button></div></form>'
+    + (recent.length ? '<section><h3 class="lbl" style="margin:0 0 6px">Recent</h3><ul class="list">' + recent.map((u) => '<li><button type="button" class="btn mono" style="max-width:100%;overflow:hidden;text-overflow:ellipsis" data-act="od-recent" data-v="' + esc(u) + '" title="' + esc(u) + '">' + esc(u) + '</button></li>').join('') + '</ul></section>' : '')
+    + '<p class="hint">Opened files are added to your systems (a system with the same slug is replaced). To share a file, link to it with ?src= instead.</p>'
+    + (d.error ? '<p class="err" role="alert">' + esc(d.error) + '</p>' : '')
+    + '</div></div>';
+}
+function closeOpenDlg() {
+  const back = ui.openDlg && ui.openDlg.opener;
+  ui.openDlg = null;
+  renderModal();
+  if (back) (back.isConnected ? back : $('file-menu-btn')).focus();
+}
 function renderModal() {
   const el = $('modal');
+  if (ui.openDlg) { el.hidden = false; el.innerHTML = openDialog(); return; }
   if (ui.sysDel) { el.hidden = false; el.innerHTML = sysDelDialog(); return; }
   const sc = ui.schema;
   el.hidden = !sc;
@@ -1342,7 +1388,7 @@ function render(opts) {
   if (!skip.includes('playbar')) renderPlaybar();
   renderDrawer();
   if (!skip.includes('modal')) renderModal();
-  syncHash();
+  syncUrl();
   if (fid && document.activeElement !== document.getElementById(fid)) {
     const el = document.getElementById(fid);
     if (el) {
@@ -1490,6 +1536,9 @@ document.addEventListener('click', (e) => {
   const inMenu = e.target.closest('#file-menu-wrap');
   const t = e.target.closest('[data-act]');
   if (ui.fileMenu && (!inMenu || (t && t.getAttribute('data-act') !== 'file-menu'))) { ui.fileMenu = false; renderHeader(); }
+  // System/flow links open in place (no reload, so unsaved work stays); modified clicks still open a new tab.
+  const link = e.target.closest('a.ring-link, a.sublink');
+  if (link && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) { e.preventDefault(); applyRoute(parseRoute(new URL(link.getAttribute('href'), location.href).search, '')); return; }
   if (!t) return;
   const v = t.getAttribute('data-v');
   const f = flow();
@@ -1499,8 +1548,12 @@ document.addEventListener('click', (e) => {
     undo, redo,
     md: () => { ui.mdOpen = !ui.mdOpen; if (ui.mdOpen && !ui.mdError) ui.mdText = C.serialize(model); render({ skip: ['left', 'right', 'stage', 'playbar'] }); },
     'file-menu': () => setFileMenu(!ui.fileMenu, true),
+    theme: () => { ui.theme = ui.theme === null ? 'light' : ui.theme === 'light' ? 'dark' : null; applyTheme(); renderHeader(); syncUrl(); },
     download: () => downloadMd(),
-    load: () => $('file-in').click(),
+    open: () => { ui.openDlg = { url: '', busy: false, error: null, dragging: false, opener: t.isConnected ? t : $('file-menu-btn') }; renderModal(); $('od-file').focus(); },
+    'od-close': () => closeOpenDlg(),
+    'od-file': () => $('file-in').click(),
+    'od-recent': () => openUrl(v),
     'new-sys': () => newSystem(),
     'confirm-no': () => { ui.confirm = null; render(); },
     cancel: () => { ui.pending = null; ui.cursor = null; render(); },
@@ -1660,7 +1713,27 @@ left.addEventListener('drop', (e) => {
 left.addEventListener('dragend', () => { stepDrag = null; clearDropMarks(); });
 
 /* ---------- input handling ---------- */
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'od-form') return;
+  e.preventDefault();
+  openUrl(ui.openDlg.url);
+});
+// Files dropped while the Open dialog is up open in the app, never as a page in the browser.
+document.addEventListener('dragover', (e) => {
+  if (!ui.openDlg) return;
+  e.preventDefault();
+  const on = !!e.target.closest('#od-drop');
+  if (on !== ui.openDlg.dragging) { ui.openDlg.dragging = on; $('od-drop').classList.toggle('on', on); }
+});
+document.addEventListener('drop', (e) => {
+  if (!ui.openDlg) return;
+  e.preventDefault();
+  ui.openDlg.dragging = false;
+  if (e.target.closest('#od-drop')) readFile(e.dataTransfer && e.dataTransfer.files[0]);
+  else renderModal();
+});
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'od-url') { ui.openDlg.url = e.target.value; e.target.form.querySelector('[type="submit"]').disabled = ui.openDlg.busy || e.target.value.trim() === ''; return; }
   const id = e.target.id, val = e.target.value;
   const f = flow();
   if (id === 'sys-label') { if (val.trim()) commit(C.updateSystem(model, { label: val }), { key: id, skip: ['left'] }); syncField('sys-slug', model.system.slug); return; }
@@ -1830,6 +1903,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); ui.tp = null; refreshRight(); return; }
   }
   if (ui.sysDel && e.key === 'Escape') { e.preventDefault(); closeSysDel(); return; }
+  if (ui.openDlg && e.key === 'Escape') { e.preventDefault(); closeOpenDlg(); return; }
   // Enter on a field name: a fresh blank field right below it, ready to type.
   if (ui.schema && t && /^sf-name-\d+$/.test(t.id) && e.key === 'Enter') {
     e.preventDefault();
@@ -2008,27 +2082,76 @@ function scheduleMdParse(text) {
 function openFile(input) {
   const file = input.files && input.files[0];
   input.value = '';
-  if (!file) return;
-  file.text().then((text) => {
-    let m;
-    try { m = C.parse(text); }
-    catch (err) {
-      if (!(err instanceof C.FlowParseError)) throw err;
-      ui.mdOpen = true; ui.mdText = text; ui.mdError = err;
-      render();
-      toast(file.name + ' has an error: ' + err.message);
-      return;
-    }
-    const slug = m.system.slug;
-    const existing = [...library.entries()].find(([, e]) => e.model && e.model.system.slug === slug);
-    const id = existing ? existing[0] : slug;
-    library.set(id, { model: m, text: null, error: null, sample: false });
-    persistSamples();
-    markDirty(id);
-    openHome(id);
+  readFile(file);
+}
+function readFile(file) {
+  const fail = (msg) => { if (ui.openDlg) { ui.openDlg.error = msg; renderModal(); } else toast(msg); };
+  if (!file) { fail('Drop or choose a .md file.'); return; }
+  if (!/\.(md|markdown|txt)$/i.test(file.name)) { fail('"' + file.name + '" is not a Markdown file (.md).'); return; }
+  file.text().then((text) => openText(text, file.name), () => fail('Could not read ' + file.name + '.'));
+}
+/** Fetch a system's Markdown (absolute, or relative to this page; another host must allow CORS). Rejects with a message to show. */
+async function fetchMd(raw) {
+  const url = new URL(raw, location.href);
+  let res;
+  try { res = await fetch(url); } catch (err) { throw new Error('Could not load ' + raw + ' (network error or blocked by CORS).'); }
+  if (!res.ok) throw new Error('Could not load ' + raw + ' (HTTP ' + res.status + ').');
+  return res.text();
+}
+function openUrl(raw) {
+  const u = (raw || '').trim();
+  if (!u || !ui.openDlg || ui.openDlg.busy) return;
+  ui.openDlg.busy = true; ui.openDlg.error = null; ui.openDlg.url = u;
+  renderModal();
+  fetchMd(u).then((text) => { addRecent(new URL(u, location.href).href); openText(text, u); }, (err) => {
+    if (!ui.openDlg) return;
+    ui.openDlg.busy = false; ui.openDlg.error = err.message;
+    renderModal();
+  });
+}
+/** URLs opened before, newest first (this browser only). */
+const RECENT_KEY = 'flows:recent';
+function recentUrls() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; }
+}
+function addRecent(u) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify([u, ...recentUrls().filter((x) => x !== u)].slice(0, 6))); } catch (e) { /* no storage: nothing to remember it in */ }
+}
+/** Open a system's Markdown (from a file, URL or ?src=), replacing a saved system with the same slug; only: show just this system. True if it read. */
+function openText(text, name, only) {
+  ui.openDlg = null;
+  let m;
+  try { m = C.parse(text); }
+  catch (err) {
+    if (!(err instanceof C.FlowParseError)) throw err;
+    ui.mdOpen = true; ui.mdText = text; ui.mdError = err;
     render();
-    toast((existing ? 'Replaced ' : 'Opened ') + m.system.label + ' from ' + file.name + '.');
-  }, () => toast('Could not read ' + file.name + '.'));
+    toast(name + ' has an error: ' + err.message);
+    return false;
+  }
+  if (only) { library.clear(); ui.isSample = false; }
+  const slug = m.system.slug;
+  const existing = [...library.entries()].find(([, e]) => e.model && e.model.system.slug === slug);
+  const id = existing ? existing[0] : slug;
+  library.set(id, { model: m, text: null, error: null, sample: false });
+  persistSamples();
+  markDirty(id);
+  openHome(id);
+  render();
+  toast((existing ? 'Replaced ' : 'Opened ') + m.system.label + ' from ' + name + '.');
+  return true;
+}
+/** ?src=<url> shows just that file, unsaved, so a shared link never overwrites the systems saved here. */
+async function loadSrc() {
+  const src = new URLSearchParams(location.search).get('src');
+  if (!src) return;
+  let text;
+  try { text = await fetchMd(src); } catch (err) { toast(err.message + ' Showing your saved systems instead.'); return; }
+  const saved = db;
+  db = null;
+  if (!openText(text, src, true)) { db = saved; return; }
+  addRecent(new URL(src, location.href).href);
+  setStore('none', 'Not saved: opened from a link. Download to keep changes');
 }
 function copyMd() {
   const text = ui.mdError ? ui.mdText : C.serialize(model);
@@ -2042,7 +2165,14 @@ function downloadMd() {
   if (ui.mdError) { toast('Fix the Markdown error first: ' + ui.mdError.message); return; }
   const use = window.claude && window.claude.use ? window.claude.use('downloads') : Promise.resolve(null);
   use.then((dl) => {
-    if (!dl) { toast('Downloads aren\'t available in this view. Use Markdown → Copy instead.'); return; }
+    if (!dl) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([C.serialize(model)], { type: 'text/markdown;charset=utf-8' }));
+      a.download = homeSlug() + '.flow.md';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 0); // after the download has started
+      return;
+    }
     dl.save({ filename: homeSlug() + '.flow.md', data: C.serialize(model) }).then(
       () => toast('Saved ' + homeSlug() + '.flow.md.'),
       (err) => { if (err && err.code !== 'declined') toast('Download failed: ' + (err.message || err.code)); }
@@ -2108,12 +2238,26 @@ function savePointer() {
   if (!db || !loaded || ui.isSample) return;
   db.doc('app/state').set({ home: ui.homeDoc }).catch(() => { /* the pointer only remembers which system was open last */ });
 }
+/** localStorage shaped like the artifact store (the parts used here), for pages not hosted on claude.ai. Null if storage is blocked. */
+function localDb() {
+  let ls;
+  try { ls = window.localStorage; ls.setItem('flows:probe', '1'); ls.removeItem('flows:probe'); } catch (e) { return null; }
+  const key = (path) => 'flows:db:' + path;
+  const doc = (path) => ({
+    get: async () => { const v = ls.getItem(key(path)); return { exists: v !== null, data: () => JSON.parse(v) }; },
+    set: async (data) => ls.setItem(key(path), JSON.stringify(data)),
+    delete: async () => ls.removeItem(key(path))
+  });
+  const collection = (name) => ({
+    get: async () => ({ docs: Object.keys(ls).filter((k) => k.startsWith(key(name + '/'))).map((k) => ({ id: k.slice(key(name + '/').length), data: () => JSON.parse(ls.getItem(k)) })) })
+  });
+  return { doc, collection };
+}
 async function initStore() {
   const use = window.claude && window.claude.use;
-  if (!use) { loaded = true; setStore('none', 'Not saved: open this page on claude.ai'); return; }
-  db = await use('db');
+  db = use ? await use('db') : localDb();
   if (!db) { loaded = true; setStore('none', 'Not saved: storage unavailable here'); return; }
-  const user = await use('user');
+  const user = use ? await use('user') : null;
   const editable = user ? await user.canEdit() : true;
   let docs;
   try { docs = (await db.collection('systems').get()).docs.map((d) => ({ id: d.id, data: d.data() })); }
@@ -2164,7 +2308,12 @@ async function initStore() {
 }
 
 /* ---------- boot ---------- */
+const theme = new URLSearchParams(location.search).get('theme');
+ui.theme = THEMES.includes(theme) ? theme : null;
+applyTheme();
 seedSamples();
 render();
-initStore().catch((err) => { loaded = true; setStore('error', 'Storage error: ' + (err && (err.message || err.code))); }).then(() => applyRoute(initialHash));
+initStore().catch((err) => { loaded = true; setStore('error', 'Storage error: ' + (err && (err.message || err.code))); })
+  .then(loadSrc)
+  .then(() => applyRoute(parseRoute(location.search, location.hash)));
 })();
