@@ -97,14 +97,14 @@ const YAML = typeof jsyaml !== 'undefined' ? jsyaml : require('js-yaml');
  * ------------------------------------------------------------------------- */
 
 // Devices (phone, laptop, tablet) are where a user's request starts or a notification lands.
-const KIND_NAMES = ['user', 'phone', 'laptop', 'tablet', 'service', 'database', 'queue', 'external', 'fn', 'timer', 'system'];
+const KIND_NAMES = ['user', 'phone', 'laptop', 'tablet', 'service', 'database', 'queue', 'external', 'fn', 'script', 'command', 'job', 'timer', 'system'];
 const KIND_FILLS = {
   user: '#ffec99', phone: '#fcc2d7', laptop: '#dee2e6', tablet: '#99e9f2', service: '#a5d8ff', database: '#ffd8a8', queue: '#c3fae8',
-  external: '#ffc9c9', fn: '#b2f2bb', timer: '#eebefa', system: '#d0bfff'
+  external: '#ffc9c9', fn: '#b2f2bb', script: '#fcc2d7', command: '#dee2e6', job: '#99e9f2', timer: '#eebefa', system: '#d0bfff'
 };
 const KIND_TITLES = {
   user: 'User', phone: 'Phone', laptop: 'Laptop', tablet: 'Tablet', service: 'Service', database: 'Database', queue: 'Queue',
-  external: 'External API', fn: 'Function', timer: 'Timer', system: 'Sub-system'
+  external: 'External API', fn: 'Function', script: 'Script', command: 'Command', job: 'Job', timer: 'Timer', system: 'Sub-system'
 };
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;

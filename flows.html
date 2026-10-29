@@ -204,6 +204,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .orbit .alabel-bg { fill: var(--canvas); opacity: .9; }
 .orbit .pending, .orbit .pending-tx, .orbit .ghost, .orbit .target, .orbit .dot, .orbit .dot-halo, .orbit .alabel, .orbit .alabel-bg, .orbit .ptitle, .orbit .pslug, .orbit .centre, .orbit .centre-sub, .orbit .disc-line, .orbit .nline { pointer-events: none; }
 .orbit .nofx { pointer-events: none; }
+.orbit .centre.editable, .orbit .centre-sub.editable { pointer-events: auto; cursor: text; }
+.orbit .centre.editable:hover, .orbit .centre-sub.editable:hover, .orbit .editable:focus { fill: var(--accent-ink); }
+.inplace { position: fixed; z-index: 50; transform: translateY(-50%); text-align: center; font-weight: 700; }
 .orbit .ring-link .centre { pointer-events: auto; cursor: pointer; fill: var(--accent-ink); text-decoration: underline; text-underline-offset: 4px; }
 .orbit .ring-link:hover .centre, .orbit .ring-link:focus .centre { fill: var(--accent); }
 .sublink { font-weight: 700; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -426,14 +429,14 @@ const YAML = typeof jsyaml !== 'undefined' ? jsyaml : require('js-yaml');
  * ------------------------------------------------------------------------- */
 
 // Devices (phone, laptop, tablet) are where a user's request starts or a notification lands.
-const KIND_NAMES = ['user', 'phone', 'laptop', 'tablet', 'service', 'database', 'queue', 'external', 'fn', 'timer', 'system'];
+const KIND_NAMES = ['user', 'phone', 'laptop', 'tablet', 'service', 'database', 'queue', 'external', 'fn', 'script', 'command', 'job', 'timer', 'system'];
 const KIND_FILLS = {
   user: '#ffec99', phone: '#fcc2d7', laptop: '#dee2e6', tablet: '#99e9f2', service: '#a5d8ff', database: '#ffd8a8', queue: '#c3fae8',
-  external: '#ffc9c9', fn: '#b2f2bb', timer: '#eebefa', system: '#d0bfff'
+  external: '#ffc9c9', fn: '#b2f2bb', script: '#fcc2d7', command: '#dee2e6', job: '#99e9f2', timer: '#eebefa', system: '#d0bfff'
 };
 const KIND_TITLES = {
   user: 'User', phone: 'Phone', laptop: 'Laptop', tablet: 'Tablet', service: 'Service', database: 'Database', queue: 'Queue',
-  external: 'External API', fn: 'Function', timer: 'Timer', system: 'Sub-system'
+  external: 'External API', fn: 'Function', script: 'Script', command: 'Command', job: 'Job', timer: 'Timer', system: 'Sub-system'
 };
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -1585,6 +1588,9 @@ const ICONS = {
   queue: 'M2 6h4v8H2zM8 6h4v8H8zM14 6h4v8h-4z',
   external: 'M10 17.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM2.5 10h15M10 2.5c2 2.2 3 4.7 3 7.5s-1 5.3-3 7.5c-2-2.2-3-4.7-3-7.5s1-5.3 3-7.5z',
   fn: 'M7 17c2 0 2.5-1.5 3-4l1.5-7c.5-2.5 1-3.5 3-3.5M6 9h7',
+  script: 'M5 2.5h7l3.5 3.5v11.5H5zM12 2.5V6h3.5M8.5 10 7 11.5 8.5 13M11.5 10l1.5 1.5-1.5 1.5',
+  command: 'M3 4h14v12H3zM6 8l2.5 2L6 12M10 12.5h4',
+  job: 'M3 7h14v9.5H3zM7.5 7V4.5h5V7M3 11h14',
   timer: 'M10 17.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM10 7.5V11l2 1.5M8 2.5h4',
   system: 'M10 17.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   undo: 'M7 5 3 9l4 4M3 9h9a5 5 0 0 1 0 10h-2', redo: 'm13 5 4 4-4 4M17 9H8a5 5 0 0 0 0 10h2',
@@ -2018,7 +2024,7 @@ function along(pts, t) {
 /**
  * opts: items, stateOf(key) → 'normal'|'sel'|'active'|'dim', labels(key), dots [{key,p}],
  * selectedNode(ref), selectedRing(slug), pending {from, next}, cursor, drag {ref,x,y,target},
- * nodeHits, ringHits, badgeAct ('fork'|'jump'), sublabel(ring)
+ * editCentre (home label renames the system), editSub (home sublabel renames the flow), nodeHits, ringHits, badgeAct ('fork'|'jump'), sublabel(ring)
  */
 function sceneSvg(scene, opts) {
   const o = [];
@@ -2033,12 +2039,14 @@ function sceneSvg(scene, opts) {
     if (!r.folded) o.push('<path class="disc-line' + (r.collapsed ? ' collapsed' : '') + (opts.selectedRing && opts.selectedRing(r.slug) ? ' ring-sel' : '') + '" d="' + rEllipse(r.cx, r.cy, R, R, rng(hash('disc' + r.slug))) + '"/>');
     if (opts.ringHits && !r.home) o.push('<circle class="ring-hit" data-ring="' + esc(r.slug) + '" cx="' + f1(r.cx) + '" cy="' + f1(r.cy) + '" r="' + f1(R + r.L.nr) + '"/>');
     const big = r.collapsed ? 1.6 : 1;
-    const centre = '<text class="centre" style="font-size:' + f1(32 * k * big) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy - 4 * k) + '" text-anchor="middle">' + esc(sys ? sys.label : r.slug) + '</text>';
+    let centre = '<text class="centre" style="font-size:' + f1(32 * k * big) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy - 4 * k) + '" text-anchor="middle">' + esc(sys ? sys.label : r.slug) + '</text>';
+    const edit = r.home && opts.editCentre;
+    if (edit) centre = centre.replace('class="centre"', 'class="centre editable" data-act="edit-sys-label" role="button" tabindex="0" aria-label="Rename ' + esc(sys.label) + '"');
     o.push(!r.home && sys ? '<a class="ring-link" href="' + routeHref(r.slug, null) + '" aria-label="Open ' + esc(sys.label) + '">' + centre + '</a>' : centre);
     // Folded: a rule under the title, its entry points in a row below.
     if (r.folded) { const w = foldRuleW(r); o.push('<path class="disc-line" d="' + rLine(r.cx - w, r.cy + 10 * k, r.cx + w, r.cy + 10 * k, rng(hash('rule' + r.slug))) + '"/>'); }
     const sub = r.missing ? 'not in your saved systems' : r.collapsed ? plural(sys.participants.length, 'participant') + ' · collapsed' : r.folded ? '' : opts.sublabel ? opts.sublabel(r) : '';
-    o.push('<text class="centre-sub" style="font-size:' + f1(Math.max(11, 12 * k * big)) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy + 20 * k * big) + '" text-anchor="middle">' + esc(sub) + '</text>');
+    o.push('<text class="centre-sub' + (edit && opts.editSub ? ' editable" data-act="edit-flow-name" role="button" tabindex="0" aria-label="Rename flow' : '') + '" style="font-size:' + f1(Math.max(11, 12 * k * big)) + 'px" x="' + f1(r.cx) + '" y="' + f1(r.cy + 20 * k * big) + '" text-anchor="middle">' + esc(sub) + '</text>');
     if (opts.foldToggles && !r.home && sys) {
       // Expand / collapse this system: a small button on the ring's rim, top right (folded: at the end of its rule).
       const bx = r.folded ? r.cx + foldRuleW(r) + 26 : r.cx + R * Math.SQRT1_2 + 10, by = r.folded ? r.cy + 10 * k : r.cy - R * Math.SQRT1_2 - 10;
@@ -2827,7 +2835,7 @@ function renderStage() {
     lastScene = scene;
     el.innerHTML = '<div class="stagebar"><span class="chip">' + (g ? esc(model.system.label) + ' + ' + plural(model.system.includes.length, 'included system') : plural(model.system.participants.length, 'participant') + ' · evenly spaced') + '</span>' + (g ? camBar(scene) : '') + '</div>'
       + sceneSvg(scene, {
-        sublabel: (r) => (r.home ? plural(model.system.participants.length, 'participant') : ''), nodeHits: true, ringHits: g, shadeIdle: g, drag: ui.drag,
+        sublabel: (r) => (r.home ? plural(model.system.participants.length, 'participant') : ''), nodeHits: true, ringHits: g, shadeIdle: g, drag: ui.drag, editCentre: true,
         selectedNode: (ref) => ui.sel && ui.sel.type === 'participant' && ref === homeSlug() + '.' + ui.sel.slug,
         selectedRing: (slug) => ui.sel && ui.sel.type === 'system' && ui.sel.slug === slug
       });
@@ -2850,7 +2858,7 @@ function renderStage() {
     el.innerHTML = '<div class="stagebar">' + viewSeg + '<span class="chip" style="color:' + chainColor(ui.chain) + '">' + esc(f.name) + ' · chain ' + ui.chain + '</span>'
       + (ui.pending ? '<span class="chip">from ' + esc(ui.pending.from) + (ui.pending.after !== null ? ' · after ' + ui.pending.after : '') + '</span><button type="button" class="btn sm" data-act="cancel">Cancel <kbd>Esc</kbd></button>' : '') + camBar(scene) + foldAllBar() + '</div>'
       + sceneSvg(scene, {
-        sublabel: (r) => (r.home ? 'flow · ' + f.name : ''), items: homeItems(f), nodeHits: true, badgeAct: 'fork', shadeIdle: true, foldToggles: true,
+        sublabel: (r) => (r.home ? 'flow · ' + f.name : ''), items: homeItems(f), nodeHits: true, badgeAct: 'fork', shadeIdle: true, foldToggles: true, editCentre: true, editSub: true,
         stateOf: (k) => (selKey === null ? 'normal' : k === selKey ? 'sel' : 'normal'), labels: (k) => k === selKey,
         pending: ui.pending ? { from: C.absRef(homeSlug(), ui.pending.from), next } : null, cursor: ui.cursor
       });
@@ -2985,11 +2993,45 @@ function render(opts) {
 }
 
 /* ---------- actions ---------- */
+function renameFlow(name, opts) {
+  const old = flow().slug;
+  const r = C.renameFlow(model, old, name);
+  ui.flow = r.slug;
+  if (r.slug !== old) propagateToIncluders((m) => C.renameExternalFlow(m, homeSlug(), old, r.slug));
+  commit(r.model, opts);
+}
+/** Edit an SVG label in place: an input over it, saved on Enter or blur, Escape cancels. */
+function editInPlace(textEl, value, save) {
+  const r = textEl.getBoundingClientRect(), w = Math.max(r.width + 48, 180);
+  const inp = document.createElement('input');
+  inp.className = 'field inplace';
+  inp.value = value;
+  inp.setAttribute('aria-label', textEl.getAttribute('aria-label') || 'Rename');
+  Object.assign(inp.style, { left: (r.left + r.width / 2 - w / 2) + 'px', top: (r.top + r.height / 2) + 'px', width: w + 'px', fontSize: getComputedStyle(textEl).fontSize });
+  document.body.appendChild(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const end = (ok) => {
+    if (done) return;
+    done = true;
+    const val = inp.value.trim();
+    inp.remove();
+    if (ok && val && val !== value) save(val);
+  };
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); end(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); }
+  });
+  inp.addEventListener('blur', () => end(true));
+}
 function setMode(m) {
+  const changed = ui.mode !== m;
   ui.mode = m; ui.pending = null; ui.cursor = null; ui.confirm = null; ui.drag = null; ui.ringDrag = null; ui.press = null; ui.cam = null;
   if (m !== 'play') stopPlay();
   if (ui.sel && !((m === 'system' && (ui.sel.type === 'participant' || ui.sel.type === 'system')) || (m === 'flow' && ui.sel.type === 'step'))) ui.sel = null;
   render();
+  const name = changed && m === 'flow' && $('flow-name');
+  if (name) { name.focus(); name.select(); }
 }
 /** ref: as drawn (fully qualified). Steps store home participants as bare slugs. */
 function clickNode(absRef) {
@@ -3198,6 +3240,8 @@ document.addEventListener('click', (e) => {
     'flow-del-yes': () => { const r = attempt(() => C.removeFlow(model, f.slug)); ui.confirm = null; if (r) { ui.sel = null; commit(r); } },
     'pick-step': () => { const s = C.findStep(f, Number(v)); ui.sel = { type: 'step', n: s.n }; ui.chain = s.chain; ui.pending = null; ui.confirm = null; render(); },
     fork: () => forkFrom(Number(v)),
+    'edit-sys-label': () => editInPlace(t, model.system.label, (val) => commit(C.updateSystem(model, { label: val }))),
+    'edit-flow-name': () => editInPlace(t, f.name, renameFlow),
     fold: () => { const next = new Set(ui.folded); if (next.has(v)) next.delete(v); else next.add(v); ui.folded = next; ui.cam = null; renderStage(); },
     'fold-all': () => {
       if (v !== 'expand' && v !== 'collapse') throw new Error('bug: fold-all ' + v);
@@ -3337,11 +3381,7 @@ document.addEventListener('input', (e) => {
   }
   if (id === 'flow-name') {
     if (!val.trim()) return;
-    const old = f.slug;
-    const r = C.renameFlow(model, f.slug, val);
-    ui.flow = r.slug;
-    if (r.slug !== old) propagateToIncluders((m) => C.renameExternalFlow(m, homeSlug(), old, r.slug));
-    commit(r.model, { key: id, skip: ['right'] });
+    renameFlow(val, { key: id, skip: ['right'] });
     $('flow-slug').textContent = r.slug; // the panel isn't re-rendered while typing, so show the slug following the name
     return;
   }

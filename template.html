@@ -204,6 +204,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .orbit .alabel-bg { fill: var(--canvas); opacity: .9; }
 .orbit .pending, .orbit .pending-tx, .orbit .ghost, .orbit .target, .orbit .dot, .orbit .dot-halo, .orbit .alabel, .orbit .alabel-bg, .orbit .ptitle, .orbit .pslug, .orbit .centre, .orbit .centre-sub, .orbit .disc-line, .orbit .nline { pointer-events: none; }
 .orbit .nofx { pointer-events: none; }
+.orbit .centre.editable, .orbit .centre-sub.editable { pointer-events: auto; cursor: text; }
+.orbit .centre.editable:hover, .orbit .centre-sub.editable:hover, .orbit .editable:focus { fill: var(--accent-ink); }
+.inplace { position: fixed; z-index: 50; transform: translateY(-50%); text-align: center; font-weight: 700; }
 .orbit .ring-link .centre { pointer-events: auto; cursor: pointer; fill: var(--accent-ink); text-decoration: underline; text-underline-offset: 4px; }
 .orbit .ring-link:hover .centre, .orbit .ring-link:focus .centre { fill: var(--accent); }
 .sublink { font-weight: 700; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
