@@ -55,6 +55,7 @@ const YAML = typeof jsyaml !== 'undefined' ? jsyaml : require('js-yaml');
  *   title  string  Name drawn on the ring, e.g. "Order Service".
  *   kind   Kind    One of KIND_NAMES. Only affects icon and default colour.
  *   fill   string  Node colour as #rrggbb.
+ *   description string  Markdown notes. Optional in the file; written only when non-empty.
  *
  * Flow
  *   slug   string  Id used by `triggers`, e.g. "checkout". Follows `name`.
@@ -207,7 +208,7 @@ function addParticipant(model, kind, title) {
     t = KIND_TITLES[kind] + (same ? ' ' + (same + 1) : '');
   }
   const slug = uniqueSlug(slugify(t), taken);
-  const p = { slug, title: t, kind, fill: KIND_FILLS[kind] };
+  const p = { slug, title: t, kind, fill: KIND_FILLS[kind], description: '' };
   return { model: { ...model, system: { ...model.system, participants: [...parts, p] } }, slug };
 }
 
@@ -216,9 +217,9 @@ function renameParticipantRefs(flows, from, to) {
   return flows.map((f) => ({ ...f, steps: f.steps.map((s) => ({ ...s, from: s.from === from ? to : s.from, to: s.to === from ? to : s.to })) }));
 }
 
-/** Patch title / slug / kind / fill. Slug follows the title unless it was set by hand. Returns { model, slug }. */
+/** Patch title / slug / kind / fill / description. Slug follows the title unless it was set by hand. Returns { model, slug }. */
 function updateParticipant(model, slug, patch) {
-  const allowed = ['title', 'slug', 'kind', 'fill'];
+  const allowed = ['title', 'slug', 'kind', 'fill', 'description'];
   Object.keys(patch).forEach((k) => { if (!allowed.includes(k)) throw new Error('bug: updateParticipant got "' + k + '"'); });
   const i = participantIndex(model, slug);
   const p = model.system.participants[i];
@@ -800,7 +801,7 @@ function serialize(model) {
   out.push(F + 'system', yamlBlock({
     slug: s.slug, label: s.label, fill: s.fill, opacity: s.opacity, selfReach: s.selfReach,
     ...(s.includes.length ? { includes: s.includes } : {}),
-    participants: s.participants.map((p) => ({ slug: p.slug, title: p.title, kind: p.kind, fill: p.fill }))
+    participants: s.participants.map((p) => ({ slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, ...(p.description ? { description: p.description } : {}) }))
   }, 2), F);
   if (model.schemas.length) {
     out.push('', '## Types', '', F + 'schema', yamlBlock(Object.fromEntries(model.schemas.map((x) => [x.slug, {
@@ -856,14 +857,15 @@ function readSystem(raw, line) {
   const seen = new Set();
   const participants = raw.participants.map((p, k) => {
     const what = 'Participant ' + (k + 1);
-    checkKeys(p, ['slug', 'title', 'kind', 'fill'], [], line, what);
+    checkKeys(p, ['slug', 'title', 'kind', 'fill'], ['description'], line, what);
     need(typeof p.slug === 'string' && SLUG_RE.test(p.slug), line, what + ' slug must be kebab-case, e.g. "order-service".');
     need(!seen.has(p.slug), line, 'Two participants use the slug "' + p.slug + '".');
     seen.add(p.slug);
     need(typeof p.title === 'string' && p.title.trim() !== '', line, what + ' needs a title.');
     need(KIND_NAMES.includes(p.kind), line, what + ' kind must be one of ' + KIND_NAMES.join(', ') + '.');
     need(typeof p.fill === 'string' && HEX_RE.test(p.fill), line, what + ' fill must be a colour like "#b2f2bb".');
-    return { slug: p.slug, title: p.title, kind: p.kind, fill: p.fill };
+    need(p.description === undefined || typeof p.description === 'string', line, what + ' description must be text.');
+    return { slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, description: p.description || '' };
   });
   return { slug: raw.slug, label: raw.label, fill: raw.fill, opacity: raw.opacity, selfReach: raw.selfReach, participants, includes };
 }
@@ -1135,7 +1137,7 @@ function phasesAt(items, t) {
 /* ---------- sample ---------- */
 
 const S_ = (n, from, to, label, chain, after, extra) => ({ n, from, to, label, chain, after, message: null, tags: [], triggers: null, data: {}, description: '', result: null, async: false, ...(extra || {}) });
-const P_ = (slug, title, kind, fill) => ({ slug, title, kind, fill });
+const P_ = (slug, title, kind, fill) => ({ slug, title, kind, fill, description: '' });
 
 /** Example "Payments" and "Fulfilment" systems, offered so a galaxy has something to include. */
 function exampleSystems() {

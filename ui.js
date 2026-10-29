@@ -857,7 +857,7 @@ function participantPanel() {
     + '<label class="f">Kind<select class="field" id="pt-kind">' + C.KIND_NAMES.map((k) => '<option value="' + k + '"' + (k === p.kind ? ' selected' : '') + '>' + C.KIND_TITLES[k] + '</option>').join('') + '</select></label>'
     + '<div class="f"><span>Colour</span><div class="swatches">' + NODE_FILLS.map(([n, c]) => '<button type="button" class="swatch" data-act="pt-fill" data-v="' + c + '" aria-label="' + n + '" aria-pressed="' + (p.fill === c) + '" style="background:' + c + '"></button>').join('') + '</div></div>'
     + '<div class="f"><span>Position</span><div class="row"><button type="button" class="btn" data-act="pt-move" data-v="-1">‹ Anticlockwise</button><button type="button" class="btn" data-act="pt-move" data-v="1">Clockwise ›</button></div></div>'
-    + '</section><section class="sec">'
+    + '</section>' + descEditor('pt-desc', p.description) + '<section class="sec">'
     + (ui.confirm && ui.confirm.kind === 'part' ? '<div class="confirm">Remove ' + esc(p.title) + (used ? ' and its ' + plural(used, 'step') : '') + '? <button type="button" class="btn sm danger" data-act="pt-del-yes">Remove</button><button type="button" class="btn sm" data-act="confirm-no">Cancel</button></div>'
       : '<button type="button" class="btn danger" data-act="pt-del">Remove from system</button>')
     + '</section>';
@@ -1218,12 +1218,7 @@ function stepEditor(f, s) {
         + (draftData && draftData.error ? '<p class="err">' + esc(draftData.error) + '</p>' : '')
         + '<div id="data-check" class="sec" style="border:0;padding:0">' + dataCheck(s) + '</div></div>'
       : msgSummary(s))
-    + '</section><section class="sec"><h2 class="lbl">Description</h2><div class="mdbox"><div class="mdtools" role="toolbar" aria-label="Formatting">'
-    + [['h', 'Heading', 'H'], ['b', 'Bold', 'B'], ['i', 'Italic', '<em style="font-family:Georgia,serif">I</em>'], ['link', 'Link', icon('link')], ['code', 'Code', '<span class="mono" style="font-size:11px">&lt;/&gt;</span>'], ['ul', 'Bulleted list', icon('list')], ['quote', 'Quote', '<span style="font-family:Georgia,serif;font-size:18px">“</span>']]
-      .map(([k, n, g]) => '<button type="button" class="tb" data-act="fmt" data-v="' + k + '" aria-label="' + n + '"' + (ui.descPreview ? ' disabled' : '') + '>' + g + '</button>').join('')
-    + '<span class="spacer"></span><div class="seg" role="group" aria-label="Description view" style="padding:2px"><button type="button" data-act="desc-mode" data-v="write" aria-pressed="' + !ui.descPreview + '" style="min-height:26px">Write</button><button type="button" data-act="desc-mode" data-v="preview" aria-pressed="' + ui.descPreview + '" style="min-height:26px">Preview</button></div></div>'
-    + (ui.descPreview ? '<div class="prose preview">' + md(s.description) + '</div>' : '<textarea id="st-desc" rows="7" placeholder="Markdown: **bold**, *italic*, [links](https://…), lists">' + esc(s.description) + '</textarea>')
-    + '</div></section><section class="sec">'
+    + '</section>' + descEditor('st-desc', s.description) + '<section class="sec">'
     + (ui.confirm && ui.confirm.kind === 'step' ? '<div class="confirm">Delete step ' + s.n + '? Later steps are renumbered. <button type="button" class="btn sm danger" data-act="step-del-yes">Delete</button><button type="button" class="btn sm" data-act="confirm-no">Cancel</button></div>'
       : '<button type="button" class="btn danger" data-act="step-del">Delete step</button>')
     + '</section>';
@@ -1436,6 +1431,7 @@ function renameFlow(name, opts) {
   if (r.slug !== old) propagateToIncluders((m) => C.renameExternalFlow(m, homeSlug(), old, r.slug));
   commit(r.model, opts);
 }
+function focusTitle() { const t = $('pt-title'); if (t) { t.focus(); t.select(); } }
 /** Edit an SVG label in place: an input over it, saved on Enter or blur, Escape cancels. */
 function editInPlace(textEl, value, save) {
   const r = textEl.getBoundingClientRect(), w = Math.max(r.width + 48, 180);
@@ -1573,8 +1569,21 @@ function stopPlay() {
 }
 
 /* ---------- description formatting ---------- */
+/** Markdown editor with a formatting toolbar and Write / Preview, for steps (st-desc) and participants (pt-desc). */
+function descEditor(id, text) {
+  return '<section class="sec"><h2 class="lbl">Description</h2><div class="mdbox"><div class="mdtools" role="toolbar" aria-label="Formatting">'
+    + [['h', 'Heading', 'H'], ['b', 'Bold', 'B'], ['i', 'Italic', '<em style="font-family:Georgia,serif">I</em>'], ['link', 'Link', icon('link')], ['code', 'Code', '<span class="mono" style="font-size:11px">&lt;/&gt;</span>'], ['ul', 'Bulleted list', icon('list')], ['quote', 'Quote', '<span style="font-family:Georgia,serif;font-size:18px">“</span>']]
+      .map(([k, n, g]) => '<button type="button" class="tb" data-act="fmt" data-v="' + k + '" aria-label="' + n + '"' + (ui.descPreview ? ' disabled' : '') + '>' + g + '</button>').join('')
+    + '<span class="spacer"></span><div class="seg" role="group" aria-label="Description view" style="padding:2px"><button type="button" data-act="desc-mode" data-v="write" aria-pressed="' + !ui.descPreview + '" style="min-height:26px">Write</button><button type="button" data-act="desc-mode" data-v="preview" aria-pressed="' + ui.descPreview + '" style="min-height:26px">Preview</button></div></div>'
+    + (ui.descPreview ? '<div class="prose preview">' + md(text) + '</div>' : '<textarea id="' + id + '" rows="7" placeholder="Markdown: **bold**, *italic*, [links](https://…), lists">' + esc(text) + '</textarea>')
+    + '</div></section>';
+}
+function saveDesc(id, text) {
+  if (id === 'st-desc') commit(C.updateStep(model, flow().slug, ui.sel.n, { description: text }), { key: id + ui.sel.n, skip: ['right'] });
+  else commit(C.updateParticipant(model, ui.sel.slug, { description: text }).model, { key: id + ui.sel.slug, skip: ['right'] });
+}
 function applyFormat(kind) {
-  const ta = document.getElementById('st-desc');
+  const ta = document.querySelector('#st-desc, #pt-desc');
   if (!ta) throw new Error('bug: format without the description editor');
   const a = ta.selectionStart, b = ta.selectionEnd, v = ta.value, sel = v.slice(a, b);
   const wrap = (l, r, ph) => { const t = sel || ph; return { text: v.slice(0, a) + l + t + r + v.slice(b), s: a + l.length, e: a + l.length + t.length }; };
@@ -1589,7 +1598,7 @@ function applyFormat(kind) {
   };
   if (!ops[kind]) throw new Error('bug: unknown format ' + kind);
   const r = ops[kind]();
-  commit(C.updateStep(model, flow().slug, ui.sel.n, { description: r.text }), { key: 'desc' + ui.sel.n, skip: ['right'] });
+  saveDesc(ta.id, r.text);
   ta.value = r.text;
   ta.focus();
   ta.setSelectionRange(r.s, r.e);
@@ -1635,7 +1644,7 @@ document.addEventListener('click', (e) => {
     'sys-del': () => { ui.sysDel = { opener: t.isConnected ? t : $('file-menu-btn') }; renderModal(); $('sd-cancel').focus(); },
     'sys-del-no': () => closeSysDel(),
     'sys-del-yes': () => { ui.sysDel = null; renderModal(); deleteHome(); },
-    'pick-part': () => { ui.sel = { type: 'participant', slug: v }; ui.confirm = null; render(); },
+    'pick-part': () => { ui.sel = { type: 'participant', slug: v }; ui.confirm = null; render(); focusTitle(); },
     'pt-fill': () => commit(C.updateParticipant(model, sel.slug, { fill: v }).model),
     'pt-move': () => {
       const parts = model.system.participants, i = C.participantIndex(model, sel.slug);
@@ -1836,7 +1845,7 @@ document.addEventListener('input', (e) => {
   if (id === 'sc-summary') { ui.schema.draft.summary = val; applySchemaDraft(true); return; }
   if (/^sf-name-\d+$/.test(id)) { ui.schema.draft.fields[Number(id.slice(8))].name = val.trim(); applySchemaDraft(true); return; }
   if (id === 'st-message') { commit(C.updateStep(model, f.slug, ui.sel.n, { message: val }), { key: id + ui.sel.n, skip: ['right'] }); return; }
-  if (id === 'st-desc') { commit(C.updateStep(model, f.slug, ui.sel.n, { description: val }), { key: id + ui.sel.n, skip: ['right'] }); return; }
+  if (id === 'st-desc' || id === 'pt-desc') { saveDesc(id, val); return; }
   if (id === 'st-data') { editData(f, val); return; }
   if (id === 'play-pos') { ui.scrubbing = true; stopPlay(); ui.playT = Number(val) / 1000; ui.slideK = undefined; renderStage(); renderRight(); renderLeft(); updatePlaybarLive(script()); return; }
   if (id === 'md-text') { scheduleMdParse(val); updateGutter(); return; }
@@ -2106,7 +2115,7 @@ stage.addEventListener('pointerup', () => {
       return;
     }
     if (press.moved) return;
-    if (press.node) { ui.sel = { type: 'participant', slug: toLocal(press.node) }; ui.confirm = null; render(); }
+    if (press.node) { ui.sel = { type: 'participant', slug: toLocal(press.node) }; ui.confirm = null; render(); focusTitle(); }
     else if (ui.sel) { ui.sel = null; render(); }
     return;
   }

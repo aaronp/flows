@@ -36,6 +36,12 @@ test('awkward text round-trips: semicolons, hashes, backticks, colons', () => {
   assert.deepEqual(roundTrip(m), m);
 });
 
+test('participant description round-trips and is omitted when empty', () => {
+  const m = C.updateParticipant(C.sampleModel(), 'shopper', { description: 'Signed-in **customer**.\n\n- pays: yes' }).model;
+  assert.deepEqual(roundTrip(m), m);
+  assert.equal((C.serialize(m).match(/description/g) || []).length, 1);
+});
+
 test('older files without result or includes still read', () => {
   const md = C.serialize(C.sampleModel()).replace(/^result: .*\n/gm, '');
   assert.ok(C.parse(md).flows[0].steps.every((s) => s.result === null));
