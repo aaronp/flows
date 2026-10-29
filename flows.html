@@ -1786,7 +1786,7 @@ function attempt(fn) {
  * Other params (such as ?src=) are left as they are. Older #open-<system>--<flow> links still open
  * (the artifact viewer only passes a #fragment to the page). */
 const MODES = ['system', 'flow', 'play']; // in header order: ⌘1–⌘3
-const MODE_NAMES = { system: 'Systems', flow: 'Flows', play: 'Present' };
+const MODE_NAMES = { system: 'Systems', flow: 'Flows', play: 'View' };
 /** Themes from the decision ledger (adr); ids map to [data-theme] blocks in template.html. No theme follows the system light/dark setting. */
 const THEMES = [
   { id: null, label: 'Auto', swatch: { bg: '#f3f3f6', primary: '#161619', accent: '#5b57d1' } },
@@ -1800,7 +1800,7 @@ function parseRoute(search, hash) {
   const q = new URLSearchParams(search);
   const old = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
   // Galaxy was its own mode: it is now Systems with the Systems section open.
-  const mode = { present: 'play', galaxy: 'system' }[q.get('mode')] || q.get('mode');
+  const mode = { view: 'play', present: 'play', galaxy: 'system' }[q.get('mode')] || q.get('mode');
   return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null, galaxy: q.get('mode') === 'galaxy', part: q.get('part'), step: q.get('step') };
 }
 let routeReady = false, routeKey = null;
@@ -1841,7 +1841,7 @@ function currentRoute() {
   const q = new URLSearchParams(location.search);
   q.set('system', homeSlug());
   if (ui.mode === 'flow' || ui.mode === 'play') q.set('flow', ui.flow); else q.delete('flow');
-  if (ui.mode !== 'flow') q.set('mode', ui.mode === 'play' ? 'present' : ui.mode); else q.delete('mode');
+  if (ui.mode !== 'flow') q.set('mode', ui.mode === 'play' ? 'view' : ui.mode); else q.delete('mode');
   if (ui.theme) q.set('theme', ui.theme); else q.delete('theme');
   return '?' + q.toString().replace(/%2F/gi, '/').replace(/%3A/gi, ':');
 }
@@ -2369,7 +2369,7 @@ function renderLeft() {
     + model.flows.map((g) => '<li><button type="button" class="item" data-act="pick-flow" data-v="' + esc(g.slug) + '" aria-current="' + (g.slug === ui.flow) + '"><span class="body"><span class="t">' + esc(g.name) + '</span><span class="s">' + esc(g.slug) + '</span><span class="hint">' + (startsAt(g) ? 'starts at ' + esc(startsAt(g)) + ' · ' : '') + plural(g.steps.length, 'step') + '</span></span></button></li>').join('') + '</ul></section>';
   if (ui.mode === 'play') {
     const views = [['orbit', 'Orbit'], ['sequence', 'Sequence'], ['slides', 'Slides']];
-    el.innerHTML = flowsHtml + '<section class="sec"><h2 class="lbl">View</h2><div class="seg" role="group" aria-label="Present view">'
+    el.innerHTML = flowsHtml + '<section class="sec"><h2 class="lbl">Layout</h2><div class="seg" role="group" aria-label="Layout">'
       + views.map(([v, n]) => '<button type="button" data-act="view" data-v="' + v + '" aria-pressed="' + (ui.playView === v) + '">' + n + '</button>').join('') + '</div>'
       + (model.system.includes.length ? '<label class="row" style="font-weight:700;font-size:13px"><input type="checkbox" id="play-collapse"' + (ui.collapse ? ' checked' : '') + ' style="accent-color:var(--accent)"> Collapse included systems</label><p class="hint">Collapsed, a step that triggers a sub-flow plays as one step.</p>' : '') + '</section>'
       + '<section class="sec"><h2 class="lbl">Steps</h2>' + playList() + '</section>' + problemsHtml();
@@ -2840,7 +2840,7 @@ function itemCard(it, on) {
     + '</article>';
 }
 const activeItems = () => { const sc = script(); const ph = C.phasesAt(sc.items, ui.playT); return sc.items.filter((it) => ph.get(it.key).phase === 'active'); };
-/** Present: the participant whose header was clicked, its title linking to its editor in Systems. */
+/** View: the participant whose header was clicked, its title linking to its editor in Systems. */
 function headCard(ref) {
   const { system, slug } = C.parseRef(ref), m = libModels().get(system);
   const p = m && m.system.participants.find((x) => x.slug === slug);
