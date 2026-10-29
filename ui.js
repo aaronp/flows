@@ -66,7 +66,7 @@ const ui = {
   mode: 'flow', flow: null, sel: null, chain: 'A',
   pending: null, cursor: null, press: null, drag: null, ringDrag: null, cam: null,
   playT: 0, playing: false, speed: 1, playView: 'orbit', collapse: false, scrubbing: false, slideK: undefined,
-  descPreview: false, trigAll: false, drafts: {}, confirm: null,
+  descPreview: false, head: null, trigAll: false, drafts: {}, confirm: null,
   fileMenu: false,
   msgOpen: true,     // step editor: the "Message & data" section is expanded
   sysOpen: false,    // Systems mode: the Systems section is expanded, and the canvas shows the included systems
@@ -204,7 +204,7 @@ function parseRoute(search, hash) {
   const old = /^#open-([a-z0-9]+(?:-[a-z0-9]+)*)(?:--([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(hash || '');
   // Galaxy was its own mode: it is now Systems with the Systems section open.
   const mode = { present: 'play', galaxy: 'system' }[q.get('mode')] || q.get('mode');
-  return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null, galaxy: q.get('mode') === 'galaxy' };
+  return { system: q.get('system') || (old && old[1]), flow: q.get('flow') || (old && old[2]), mode: MODES.includes(mode) ? mode : null, galaxy: q.get('mode') === 'galaxy', part: q.get('part'), step: q.get('step') };
 }
 let routeReady = false, routeKey = null;
 /** Open the system, flow and mode a link names. Unknown names say so rather than guessing. */
@@ -222,13 +222,22 @@ function applyRoute(r) {
   }
   if (r.mode) setMode(r.mode);
   else { if (r.flow && ui.mode !== 'play') ui.mode = 'flow'; render(); } // a flow link shows the flow; a system link keeps the mode
+  // A link can also open a participant (Systems) or a step (Flows) in its editor.
+  if (r.part && ui.mode === 'system' && model.system.participants.some((p) => p.slug === r.part)) { ui.sel = { type: 'participant', slug: r.part }; render(); focusTitle(); }
+  if (r.step && ui.mode === 'flow' && flow().steps.some((s) => s.n === Number(r.step))) {
+    ui.sel = { type: 'step', n: Number(r.step) };
+    render();
+    const t = $('st-label');
+    if (t) { t.focus(); t.select(); }
+  }
 }
 /** A link to a system (and flow), keeping ?src= and ?theme=. Plain clicks on it are handled in-page (see the click handler). */
-function routeHref(sys, fl) {
+function routeHref(sys, fl, extra) {
   const q = new URLSearchParams(location.search);
-  ['system', 'flow', 'mode'].forEach((k) => q.delete(k));
+  ['system', 'flow', 'mode', 'part', 'step'].forEach((k) => q.delete(k));
   q.set('system', sys);
   if (fl) q.set('flow', fl);
+  Object.entries(extra || {}).forEach(([k, v]) => q.set(k, v));
   return esc('?' + q.toString().replace(/%2F/gi, '/').replace(/%3A/gi, ':'));
 }
 function currentRoute() {
@@ -625,13 +634,14 @@ function seqSvg(items, stateOf, compact, opts) {
     const x = xs.get(ref), r = rng(hash('l' + ref)), p = info(ref), bw = Math.min(colW - 14, 150);
     o.push('<path class="life" d="' + rLine(x, 70, x, H - 12, r) + '"/>');
     if (so.editable) o.push('<g data-node="' + esc(ref) + '" role="button" aria-label="' + esc(p.title) + '" style="cursor:pointer">');
+    else if (so.heads) o.push('<g data-act="pick-head" data-v="' + esc(ref) + '" role="button" tabindex="0" aria-label="About ' + esc(p.title) + '" style="cursor:pointer">');
     if (p.system) o.push('<text class="sys-tx" x="' + x + '" y="10" text-anchor="middle">' + esc(p.system) + '</text>');
     if (so.pendingFrom === ref) o.push('<rect x="' + f1(x - bw / 2 - 6) + '" y="10" width="' + (bw + 12) + '" height="60" rx="14" class="seq-pending"/>');
     o.push('<rect x="' + f1(x - bw / 2) + '" y="16" width="' + bw + '" height="48" rx="10" style="fill:' + p.fill + '"/>');
     o.push('<path class="nline" d="' + rLine(x - bw / 2, 16, x + bw / 2, 16, r) + rLine(x + bw / 2, 16, x + bw / 2, 64, r) + rLine(x + bw / 2, 64, x - bw / 2, 64, r) + rLine(x - bw / 2, 64, x - bw / 2, 16, r) + '"' + (p.system ? ' style="stroke-dasharray:6 5"' : '') + '/>');
     o.push('<text class="head-tx" x="' + x + '" y="40" text-anchor="middle">' + esc(p.title.length > 18 ? p.title.slice(0, 17) + '…' : p.title) + '</text>');
     o.push('<text class="head-slug" x="' + x + '" y="56" text-anchor="middle">' + esc(C.parseRef(ref).slug) + '</text>');
-    if (so.editable) o.push('</g>');
+    if (so.editable || so.heads) o.push('</g>');
   });
   const last = padL + (lanes.length - 1) * colW;
   o.push(activations(items, xs, (k) => 112 + k * rowH));
@@ -1226,14 +1236,27 @@ function stepEditor(f, s) {
 
 function itemCard(it, on) {
   const s = it.step;
-  return '<article class="card' + (on ? ' on' : '') + '"><div class="row"><span class="nb" style="background:' + (on ? 'var(--accent)' : chainColor(it.chain)) + '">' + esc(dk(it)) + '</span><div style="min-width:0"><div style="font-weight:800;font-size:15px">' + esc(it.label || '(no label)') + '</div><div class="mono" style="color:var(--muted);font-size:11px">' + esc(toLocal(it.from)) + ' → ' + esc(toLocal(it.to)) + (it.depth ? ' · in ' + esc(it.system) + '/' + esc(it.flow) : ' · chain ' + it.chain) + '</div></div></div>'
+  return '<article class="card' + (on ? ' on' : '') + '"><div class="row"><span class="nb" style="background:' + (on ? 'var(--accent)' : chainColor(it.chain)) + '">' + esc(dk(it)) + '</span><div style="min-width:0"><a class="sublink" style="font-weight:800;font-size:15px" href="' + routeHref(it.system, it.flow, { mode: 'flow', step: it.step.n }) + '" title="Edit step">' + esc(it.label || '(no label)') + '</a><div class="mono" style="color:var(--muted);font-size:11px">' + esc(toLocal(it.from)) + ' → ' + esc(toLocal(it.to)) + (it.depth ? ' · in ' + esc(it.system) + '/' + esc(it.flow) : ' · chain ' + it.chain) + '</div></div></div>'
     + ((s.message || s.tags.length || s.triggers || s.result) ? '<div class="row" style="gap:4px">' + (s.message ? '<span class="chip type" title="' + esc(s.message) + '">' + esc(tt(s.message)) + '</span>' : '') + s.tags.map((t) => '<span class="chip">#' + esc(t) + '</span>').join('') + (s.triggers ? '<span class="chip trig">triggers ' + esc(s.triggers) + '</span>' : '') + (s.result ? '<span class="chip ret" title="' + esc(s.result) + '">returns ' + esc(tt(s.result)) + '</span>' : '') + '</div>' : '')
     + '<div class="prose">' + md(s.description) + '</div>'
     + (Object.keys(s.data).length ? '<pre class="data">' + esc(jsyaml.dump(s.data, { lineWidth: -1, schema: jsyaml.JSON_SCHEMA }).replace(/\n$/, '')) + '</pre>' : '')
     + '</article>';
 }
 const activeItems = () => { const sc = script(); const ph = C.phasesAt(sc.items, ui.playT); return sc.items.filter((it) => ph.get(it.key).phase === 'active'); };
+/** Present: the participant whose header was clicked, its title linking to its editor in Systems. */
+function headCard(ref) {
+  const { system, slug } = C.parseRef(ref), m = libModels().get(system);
+  const p = m && m.system.participants.find((x) => x.slug === slug);
+  if (!p) return '';
+  return '<section class="sec"><h2 class="lbl">Participant</h2><article class="card"><div class="row"><span class="kicon" style="background:' + p.fill + '">' + icon(p.kind) + '</span><div style="min-width:0;flex:1 1 auto">'
+    + '<a class="sublink" style="font-size:15px" href="' + routeHref(system, null, { mode: 'system', part: slug }) + '" title="Edit participant">' + esc(p.title) + '</a>'
+    + '<div class="mono" style="color:var(--muted);font-size:11px">' + esc(m.system.label) + ' · ' + C.KIND_TITLES[p.kind] + '</div></div>'
+    + '<button type="button" class="btn icon sm" data-act="head-close" aria-label="Close">×</button></div><div class="prose">' + md(p.description) + '</div></article></section>';
+}
 function playPanel() {
+  return (ui.head ? headCard(ui.head) : '') + playSteps();
+}
+function playSteps() {
   const sc = script();
   if (!sc.items.length) return '<section class="sec"><h2 class="lbl">Playing</h2><p class="hint">This flow has no steps yet.</p></section>';
   if (ui.playView === 'slides') return '<section class="sec"><h2 class="lbl">Slides</h2><p class="hint">One slide per step in play order; concurrent chains interleave and sub-flow steps follow the step that triggered them. Use <kbd>←</kbd> <kbd>→</kbd> to move.</p></section>';
@@ -1308,7 +1331,7 @@ function renderStage() {
       });
   } else if (ui.playView === 'sequence') {
     lastScene = null;
-    el.innerHTML = seqSvg(sc.items, stateOf, false);
+    el.innerHTML = seqSvg(sc.items, stateOf, false, { heads: true });
   } else {
     lastScene = null;
     el.innerHTML = slideHtml(sc);
@@ -1687,6 +1710,8 @@ document.addEventListener('click', (e) => {
     fork: () => forkFrom(Number(v)),
     'edit-sys-label': () => editInPlace(t, model.system.label, (val) => commit(C.updateSystem(model, { label: val }))),
     'edit-flow-name': () => editInPlace(t, f.name, renameFlow),
+    'pick-head': () => { ui.head = ui.head === v ? null : v; renderRight(); },
+    'head-close': () => { ui.head = null; renderRight(); },
     fold: () => { const next = new Set(ui.folded); if (next.has(v)) next.delete(v); else next.add(v); ui.folded = next; ui.cam = null; renderStage(); },
     'fold-all': () => {
       if (v !== 'expand' && v !== 'collapse') throw new Error('bug: fold-all ' + v);

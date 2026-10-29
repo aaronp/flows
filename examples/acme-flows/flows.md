@@ -1,5 +1,5 @@
 ---
-flows: 1
+flows: 2
 ---
 
 # Acme payments

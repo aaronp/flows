@@ -47,6 +47,9 @@ test('older files listing participants in the system block still read', () => {
   const list = m.system.participants.map((p) => '  - ' + JSON.stringify({ slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, ...(p.description ? { description: p.description } : {}) }));
   const md = C.serialize(m).replace(/\n## Participant: [\s\S]*?(?=\n## (Types|Flow:))/, '').replace(/^(includes:\n(?:  - .*\n)*)```/m, '$1participants:\n' + list.join('\n') + '\n```');
   assert.ok(!md.includes('## Participant:') && md.includes('participants:'));
+  assert.ok(md.startsWith('---\nflows: 2\n'));
+  assert.deepEqual(C.parse(md.replace('flows: 2', 'flows: 1')), m);
+  assert.throws(() => C.parse(md.replace('flows: 2', 'flows: 3')), /newer version/);
   assert.deepEqual(C.parse(md), m);
 });
 

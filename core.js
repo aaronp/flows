@@ -795,9 +795,12 @@ function mermaidFor(model, flow) {
 }
 
 const F = '```';
+// File format version, written as "flows: N" in the front matter. Bump it when the format changes and keep reading older ones.
+// 1: participants listed in the system block. 2: each participant is a "## Participant:" section.
+const FORMAT = 2;
 function serialize(model) {
   const s = model.system;
-  const out = ['---', 'flows: 1', '---', '', '# ' + s.label, ''];
+  const out = ['---', 'flows: ' + FORMAT, '---', '', '# ' + s.label, ''];
   out.push(F + 'system', yamlBlock({
     slug: s.slug, label: s.label, fill: s.fill, opacity: s.opacity, selfReach: s.selfReach,
     ...(s.includes.length ? { includes: s.includes } : {})
@@ -922,12 +925,12 @@ function readMermaid(body, firstLine, refOf) {
 /** Parse a .flow.md document into a Model. Throws FlowParseError (with a 1-based line) on anything it can't read. */
 function parse(text) {
   const lines = String(text).replace(/\r\n?/g, '\n').split('\n');
-  need(lines[0] === '---', 1, 'The file must start with front matter: "---", "flows: 1", "---".');
+  need(lines[0] === '---', 1, 'The file must start with front matter: "---", "flows: ' + FORMAT + '", "---".');
   const fmEnd = lines.indexOf('---', 1);
   need(fmEnd > 0, 1, 'Front matter is not closed with a "---" line.');
   const fm = loadYaml(lines.slice(1, fmEnd).join('\n'), 2);
   checkKeys(fm, ['flows'], [], 2, 'Front matter');
-  need(fm.flows === 1, 2, 'This version reads "flows: 1" files only.');
+  need(Number.isInteger(fm.flows) && fm.flows >= 1 && fm.flows <= FORMAT, 2, fm.flows > FORMAT ? 'This file is "flows: ' + fm.flows + '", from a newer version. This one reads up to "flows: ' + FORMAT + '".' : '"flows" must be a format version from 1 to ' + FORMAT + '.');
 
   let system = null;
   let schemas = null;
