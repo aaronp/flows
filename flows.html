@@ -1132,9 +1132,12 @@ function serialize(model) {
   const out = ['---', 'flows: 1', '---', '', '# ' + s.label, ''];
   out.push(F + 'system', yamlBlock({
     slug: s.slug, label: s.label, fill: s.fill, opacity: s.opacity, selfReach: s.selfReach,
-    ...(s.includes.length ? { includes: s.includes } : {}),
-    participants: s.participants.map((p) => ({ slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, ...(p.description ? { description: p.description } : {}) }))
+    ...(s.includes.length ? { includes: s.includes } : {})
   }, 2), F);
+  s.participants.forEach((p) => {
+    out.push('', '## Participant: ' + p.title, '', F + 'participant', yamlBlock({ slug: p.slug, kind: p.kind, fill: p.fill }, -1), F);
+    if (p.description !== '') { const fence = fenceFor(p.description); out.push('', '### Description', '', fence + 'md', p.description, fence); }
+  });
   if (model.schemas.length) {
     out.push('', '## Types', '', F + 'schema', yamlBlock(Object.fromEntries(model.schemas.map((x) => [x.slug, {
       title: x.title,
@@ -1175,7 +1178,7 @@ function checkKeys(obj, required, optional, line, what) {
 const need = (cond, line, msg) => { if (!cond) throw new FlowParseError(line, msg); };
 
 function readSystem(raw, line) {
-  checkKeys(raw, ['slug', 'label', 'fill', 'opacity', 'selfReach', 'participants'], ['includes'], line, 'The system block');
+  checkKeys(raw, ['slug', 'label', 'fill', 'opacity', 'selfReach'], ['includes', 'participants'], line, 'The system block');
   const includes = raw.includes ?? [];
   need(Array.isArray(includes) && includes.every((x) => typeof x === 'string' && SLUG_RE.test(x)), line, '"includes" must be a list of system slugs, e.g. [payments, fulfilment].');
   need(new Set(includes).size === includes.length, line, '"includes" lists the same system twice.');
@@ -1185,21 +1188,20 @@ function readSystem(raw, line) {
   need(typeof raw.fill === 'string' && HEX_RE.test(raw.fill), line, 'System "fill" must be a colour like "#dbe4ff".');
   need(typeof raw.opacity === 'number' && raw.opacity >= 0 && raw.opacity <= 1, line, '"opacity" must be a number from 0 to 1.');
   need(typeof raw.selfReach === 'number' && raw.selfReach > 0 && raw.selfReach < 1, line, '"selfReach" must be a number between 0 and 1, e.g. 0.35.');
-  need(Array.isArray(raw.participants), line, '"participants" must be a list.');
-  const seen = new Set();
-  const participants = raw.participants.map((p, k) => {
-    const what = 'Participant ' + (k + 1);
-    checkKeys(p, ['slug', 'title', 'kind', 'fill'], ['description'], line, what);
-    need(typeof p.slug === 'string' && SLUG_RE.test(p.slug), line, what + ' slug must be kebab-case, e.g. "order-service".');
-    need(!seen.has(p.slug), line, 'Two participants use the slug "' + p.slug + '".');
-    seen.add(p.slug);
-    need(typeof p.title === 'string' && p.title.trim() !== '', line, what + ' needs a title.');
-    need(KIND_NAMES.includes(p.kind), line, what + ' kind must be one of ' + KIND_NAMES.join(', ') + '.');
-    need(typeof p.fill === 'string' && HEX_RE.test(p.fill), line, what + ' fill must be a colour like "#b2f2bb".');
-    need(p.description === undefined || typeof p.description === 'string', line, what + ' description must be text.');
-    return { slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, description: p.description || '' };
-  });
+  // Older files list participants here; newer ones give each its own "## Participant:" section.
+  const participants = raw.participants ?? [];
+  need(Array.isArray(participants), line, '"participants" must be a list.');
+  participants.forEach((p, k) => checkKeys(p, ['slug', 'title', 'kind', 'fill'], ['description'], line, 'Participant ' + (k + 1)));
   return { slug: raw.slug, label: raw.label, fill: raw.fill, opacity: raw.opacity, selfReach: raw.selfReach, participants, includes };
+}
+
+function readParticipant(p, line, what) {
+  need(typeof p.slug === 'string' && SLUG_RE.test(p.slug), line, what + ' slug must be kebab-case, e.g. "order-service".');
+  need(typeof p.title === 'string' && p.title.trim() !== '', line, what + ' needs a title.');
+  need(KIND_NAMES.includes(p.kind), line, what + ' kind must be one of ' + KIND_NAMES.join(', ') + '.');
+  need(typeof p.fill === 'string' && HEX_RE.test(p.fill), line, what + ' fill must be a colour like "#b2f2bb".');
+  need(p.description === undefined || typeof p.description === 'string', line, what + ' description must be text.');
+  return { slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, description: p.description || '' };
 }
 
 function readSchemas(raw, line) {
@@ -1263,7 +1265,9 @@ function parse(text) {
   let schemas = null;
   const flows = [];
   let cur = null;      // flow being read: { name, slug, line, mermaid, blocks }
-  let lastStep = null; // step block an ```md block may attach to
+  let lastStep = null; // step or participant block an ```md block may attach to
+  const parts = [];    // "## Participant:" sections: { title, line, p, description }
+  let curPart = null;
   let i = fmEnd + 1;
   while (i < lines.length) {
     const ln = i + 1;
@@ -1279,7 +1283,15 @@ function parse(text) {
         need(system === null, ln, 'Only one system block is allowed per file.');
         need(flows.length === 0, ln, 'The system block must come before the first flow.');
         system = readSystem(loadYaml(body, ln + 1), ln);
+        system.participants.forEach((p, k) => parts.push({ line: ln, p: readParticipant(p, ln, 'Participant ' + (k + 1)), description: null }));
         lastStep = null;
+      } else if (info === 'participant') {
+        need(curPart !== null, ln, 'A participant block must sit under a "## Participant: Title" heading.');
+        need(curPart.p === null, ln, 'Participant "' + curPart.title + '" has two participant blocks.');
+        const raw = loadYaml(body, ln + 1);
+        checkKeys(raw, ['slug', 'kind', 'fill'], [], ln, 'The participant block');
+        curPart.p = readParticipant({ ...raw, title: curPart.title }, ln, 'Participant "' + curPart.title + '"');
+        lastStep = curPart;
       } else if (info === 'mermaid') {
         need(cur !== null, ln, 'A mermaid block must sit under a "## Flow: Name {#slug}" heading.');
         need(cur.mermaid === null, ln, 'Flow "' + cur.name + '" has two mermaid blocks.');
@@ -1298,19 +1310,28 @@ function parse(text) {
         lastStep = { raw, line: ln, description: null };
         cur.blocks.push(lastStep);
       } else if (info === 'md') {
-        need(lastStep !== null, ln, 'An md description block must come straight after a step block.');
-        need(lastStep.description === null, ln, 'Step block on line ' + lastStep.line + ' already has a description.');
+        need(lastStep !== null, ln, 'An md description block must come straight after a step or participant block.');
+        need(lastStep.description === null, ln, 'Block on line ' + lastStep.line + ' already has a description.');
         lastStep.description = body;
       } else if (info === '') {
         lastStep = null; // a plain code block in the prose
       } else {
-        throw new FlowParseError(ln, '"' + info + '" blocks are not supported yet. This version reads system, mermaid, step and md blocks.');
+        throw new FlowParseError(ln, '"' + info + '" blocks are not supported yet. This version reads system, participant, mermaid, schema, step and md blocks.');
       }
       i = j + 1;
       continue;
     }
     if (/^##\s+Types\s*$/.test(line)) { lastStep = null; i++; continue; }
-    if (/^##\s/.test(line)) {
+    const pm = /^##\s+Participant:\s*(.*?)\s*$/.exec(line);
+    if (pm) {
+      need(pm[1] !== '', ln, 'Participant headings look like "## Participant: Order Service".');
+      need(system !== null, ln, 'The system block must come before the participants.');
+      need(flows.length === 0, ln, 'Participants must come before the first flow.');
+      curPart = { title: pm[1], line: ln, p: null, description: null };
+      parts.push(curPart);
+      lastStep = null;
+    } else if (/^##\s/.test(line)) {
+      curPart = null;
       const m = /^##\s+Flow:\s*(.*?)\s*\{#([^}]*)\}\s*$/.exec(line);
       need(m && m[1] !== '', ln, 'Flow headings look like "## Flow: Checkout {#checkout}".');
       need(SLUG_RE.test(m[2]), ln, 'Flow id "' + m[2] + '" must be kebab-case, e.g. {#checkout}.');
@@ -1325,6 +1346,13 @@ function parse(text) {
     i++;
   }
   need(system !== null, lines.length, 'No system block found.');
+  const seen = new Set();
+  system.participants = parts.map((x) => {
+    need(x.p !== null, x.line, 'Participant "' + x.title + '" needs a participant block with its slug, kind and fill.');
+    need(!seen.has(x.p.slug), x.line, 'Two participants use the slug "' + x.p.slug + '".');
+    seen.add(x.p.slug);
+    return x.description === null ? x.p : { ...x.p, description: x.description };
+  });
   need(flows.length > 0, lines.length, 'Add at least one flow: "## Flow: Main {#main}".');
 
   const idToSlug = new Map(system.participants.map((p) => [mermaidId(p.slug), p.slug]));

@@ -10,11 +10,38 @@ label: Acme payments
 fill: '#e5dbff'
 opacity: 0.6
 selfReach: 0.35
-participants:
-  - {slug: gateway-api, title: Gateway API, kind: service, fill: '#d0bfff'}
-  - {slug: fraud-check, title: Fraud Check, kind: fn, fill: '#ffc9c9'}
-  - {slug: card-network, title: Card Network, kind: external, fill: '#c3fae8'}
-  - {slug: ledger, title: Ledger, kind: database, fill: '#fff3bf'}
+```
+
+## Participant: Gateway API
+
+```participant
+slug: gateway-api
+kind: service
+fill: '#d0bfff'
+```
+
+## Participant: Fraud Check
+
+```participant
+slug: fraud-check
+kind: fn
+fill: '#ffc9c9'
+```
+
+## Participant: Card Network
+
+```participant
+slug: card-network
+kind: external
+fill: '#c3fae8'
+```
+
+## Participant: Ledger
+
+```participant
+slug: ledger
+kind: database
+fill: '#fff3bf'
 ```
 
 ## Types

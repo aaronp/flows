@@ -39,7 +39,15 @@ test('awkward text round-trips: semicolons, hashes, backticks, colons', () => {
 test('participant description round-trips and is omitted when empty', () => {
   const m = C.updateParticipant(C.sampleModel(), 'shopper', { description: 'Signed-in **customer**.\n\n- pays: yes' }).model;
   assert.deepEqual(roundTrip(m), m);
-  assert.equal((C.serialize(m).match(/description/g) || []).length, 1);
+  assert.equal((C.serialize(m).match(/^### Description$/gm) || []).length, 1);
+});
+
+test('older files listing participants in the system block still read', () => {
+  const m = C.updateParticipant(C.sampleModel(), 'shopper', { description: 'Pays.' }).model;
+  const list = m.system.participants.map((p) => '  - ' + JSON.stringify({ slug: p.slug, title: p.title, kind: p.kind, fill: p.fill, ...(p.description ? { description: p.description } : {}) }));
+  const md = C.serialize(m).replace(/\n## Participant: [\s\S]*?(?=\n## (Types|Flow:))/, '').replace(/^(includes:\n(?:  - .*\n)*)```/m, '$1participants:\n' + list.join('\n') + '\n```');
+  assert.ok(!md.includes('## Participant:') && md.includes('participants:'));
+  assert.deepEqual(C.parse(md), m);
 });
 
 test('older files without result or includes still read', () => {
